@@ -1,0 +1,20 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const user_controller_1 = require("../controllers/user.controller");
+const userAuthMiddleware_1 = require("../global/middlewares/userAuthMiddleware");
+const requireAdminRole_1 = require("../global/middlewares/requireAdminRole");
+const router = express_1.default.Router();
+router.post("/createUser", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.createUser);
+router.get("/users", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.getAllUsers);
+router.get("/admin-users", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.getAdminUsers);
+router.get("/admin-users/all", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.getAllAdminUsers);
+router.delete("/:id", userAuthMiddleware_1.authMiddleware, user_controller_1.removeUser);
+router.put("/:id", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.editUser);
+router.get("/user-info", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.getUserInfo);
+router.get("/admin-role-counts", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, user_controller_1.getAdminRoleCounts);
+router.post("/check-email", user_controller_1.checkEmailExists);
+exports.default = router;
