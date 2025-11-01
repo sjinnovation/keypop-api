@@ -76,13 +76,14 @@ export const getAdminUsers = catchAsync(async (req: Request, res: Response) => {
 
 export const removeUser = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const { forceDelete } = req.query;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Invalid user ID format");
   }
 
   const user = await User.findById(id);
-  
+
   if (!user) {
     throw new ApiError(httpStatus.NOT_FOUND, ApiMessages.USER_NOT_FOUND);
   }
@@ -93,9 +94,10 @@ export const removeUser = catchAsync(async (req: Request, res: Response) => {
     _id: user._id
   };
 
-  const deletedUser = await deleteUser(id);
-  
-  if (!deletedUser) {
+  const shouldForceDelete = forceDelete === 'true' || forceDelete === '1';
+  const deletionResult = await deleteUser(id, shouldForceDelete);
+
+  if (!deletionResult) {
     throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Failed to delete user from database");
   }
 
@@ -105,12 +107,15 @@ export const removeUser = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
+  const hasSurveyData = deletionResult.deletedSurveyData.total > 0;
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: ApiMessages.USER_DELETED,
+    message: hasSurveyData ? ApiMessages.USER_DELETED_WITH_DATA : ApiMessages.USER_DELETED,
     data: {
-      deletedUserId: userData._id
+      deletedUserId: userData._id,
+      deletedSurveyData: deletionResult.deletedSurveyData
     }
   });
 });

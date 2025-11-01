@@ -4,6 +4,9 @@ import httpStatus from "http-status";
 import { ApiMessages } from "../Constants/Messages";
 import { KeyPopulation } from "../models/survey.model";
 import bcrypt from "bcryptjs";
+import SurveyResponse from "../models/surveyResponse.model";
+import UserSurveyProgress from "../models/userSurveyProgress.model";
+import mongoose from "mongoose";
 interface CreateUserData {
   name: string;
   email: string;
@@ -72,26 +75,64 @@ export const getAdminUsersService = async (page: number = 1, limit: number = 10)
   }
 };
 
-export const deleteUser = async (id: string): Promise<any> => {
+export const deleteUser = async (id: string, forceDelete: boolean = false): Promise<any> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
+    const user = await User.findById(id).session(session);
 
-    const deletedUser = await User.findByIdAndDelete(id, {
-      returnDocument: 'before'
-    });
-
-    if (!deletedUser) {
+    if (!user) {
+      await session.abortTransaction();
+      session.endSession();
       throw new ApiError(httpStatus.NOT_FOUND, "User not found or already deleted");
     }
 
-    return deletedUser;
+    const surveyResponseCount = await SurveyResponse.countDocuments({ userId: id }).session(session);
+    const surveyProgressCount = await UserSurveyProgress.countDocuments({ userId: id }).session(session);
+    const totalSurveyData = surveyResponseCount + surveyProgressCount;
+
+    if (!forceDelete && totalSurveyData > 0) {
+      await session.abortTransaction();
+      session.endSession();
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `User has ${surveyResponseCount} survey response(s) and ${surveyProgressCount} in-progress survey(s). Set forceDelete to true to proceed with deletion.`
+      );
+    }
+
+    await SurveyResponse.deleteMany({ userId: id }).session(session);
+    await UserSurveyProgress.deleteMany({ userId: id }).session(session);
+
+    const deletedUser = await User.findByIdAndDelete(id, {
+      session,
+      returnDocument: 'before'
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    console.log(`User deleted successfully. Cleaned up ${surveyResponseCount} survey responses and ${surveyProgressCount} progress records.`);
+
+    return {
+      user: deletedUser,
+      deletedSurveyData: {
+        surveyResponses: surveyResponseCount,
+        surveyProgress: surveyProgressCount,
+        total: totalSurveyData
+      }
+    };
   } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     console.error('Database error in deleteUser:', error);
     throw new ApiError(
-      httpStatus.INTERNAL_SERVER_ERROR, 
+      httpStatus.INTERNAL_SERVER_ERROR,
       `Failed to delete user: ${error.message}`
     );
   }

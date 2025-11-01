@@ -3,6 +3,7 @@ export enum ApiMessages {
   USER_CREATED = "User created successfully",
   USER_UPDATED = "User updated successfully",
   USER_DELETED = "User deleted successfully",
+  USER_DELETED_WITH_DATA = "User and associated survey data deleted successfully",
   USER_FETCHED = "User fetched successfully",
   USER_NOT_FOUND = "User not found",
   INVALID_OR_EXPIRED_TOKEN = "Invalid or expired token",

@@ -61,6 +61,7 @@ const SurveyResponseSchema: Schema<ISurveyResponse> = new Schema(
 
 // Indexes
 SurveyResponseSchema.index({ surveyId: 1, userId: 1 });
+SurveyResponseSchema.index({ userId: 1 });
 SurveyResponseSchema.index({ "answers.code": 1 });
 SurveyResponseSchema.index({ "answers.categoryCode": 1 });
 SurveyResponseSchema.index({ "answers.keyPopulation": 1 });
