@@ -51,9 +51,6 @@ pipeline {
                             echo '📦 Installing dependencies...'
                             npm install
 
-                            echo '🏗️ Building app...'
-                            npm run build
-
                             echo '🔄 Restarting app safely...'
                             pm2 restart all || npm run pm2-start
 
