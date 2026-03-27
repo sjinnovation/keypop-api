@@ -18,7 +18,9 @@ const env_1 = require("./env");
 dotenv_1.default.config();
 const connectDB = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        yield mongoose_1.default.connect(env_1.envConfig.MONGO_URI);
+        const uri = env_1.envConfig.MONGO_URI;
+        console.log("[database] MONGO_URI (full string):", uri || "(empty — set MONGO_URI in env)");
+        yield mongoose_1.default.connect(uri);
         console.log("MongoDB Connected...");
     }
     catch (err) {
