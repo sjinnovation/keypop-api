@@ -77,6 +77,7 @@ const UserSurveyProgressSchema = new mongoose_1.Schema({
 }, { timestamps: true });
 // Additional indexes for performance
 UserSurveyProgressSchema.index({ userId: 1, surveyId: 1 }, { unique: true });
+UserSurveyProgressSchema.index({ userId: 1 });
 UserSurveyProgressSchema.index({ "answers.subCode": 1 });
 UserSurveyProgressSchema.index({ "answers.keyPopulation": 1 });
 UserSurveyProgressSchema.index({ "answers.skipped": 1 });

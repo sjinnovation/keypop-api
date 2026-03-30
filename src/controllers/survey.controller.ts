@@ -16,7 +16,8 @@ import {
     updateUserSurveyProgressService,
     getUserCountrySurveyService,
     getUserSurveyResponseService,
-    getAllUserSurveyResponsesService
+    getAllUserSurveyResponsesService,
+    listAdminSurveyResponsesService
 } from "../services/survey.service";
 import { validateSurveyQuestions } from "../Utils/validateSurveyQuestion";
 import ApiError from "../global/errors/ApiError";
@@ -222,3 +223,27 @@ export const getAllUserSurveyResponses = catchAsync(async (req: Request, res: Re
       data: responses,
     });
   });
+
+/** Superadmin & admin: all responses. Community admin: same `User.country` as respondents. */
+export const listAdminSurveyResponses = catchAsync(async (req: Request, res: Response) => {
+  const { user } = req;
+  const { page = 1, limit = 20, status, surveyId } = req.query;
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const rawLimit = Number(limit) || 20;
+  const limitNum = Math.min(100, Math.max(1, rawLimit));
+
+  const data = await listAdminSurveyResponsesService(user.role, user.country, {
+    surveyId: typeof surveyId === "string" && surveyId.trim() ? surveyId.trim() : undefined,
+    page: pageNum,
+    limit: limitNum,
+    status: typeof status === "string" ? status : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: ApiMessages.SURVEY_RESPONSES_FETCHED,
+    data,
+  });
+});

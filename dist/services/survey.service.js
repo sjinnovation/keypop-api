@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -12,11 +45,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllUserSurveyResponsesService = exports.getUserSurveyResponseService = exports.getUserCountrySurveyService = exports.updateUserSurveyProgressService = exports.getUserSurveyProgressService = exports.submitSurveyResponseService = exports.getSurveyByCountryService = exports.deleteSurveyService = exports.updateSurveyStatusService = exports.updateSurveyService = exports.getSurveyByIdService = exports.getAllSurveysService = exports.addSurveyService = void 0;
+exports.listAdminSurveyResponsesService = exports.getAllUserSurveyResponsesService = exports.getUserSurveyResponseService = exports.getUserCountrySurveyService = exports.updateUserSurveyProgressService = exports.getUserSurveyProgressService = exports.submitSurveyResponseService = exports.getSurveyByCountryService = exports.deleteSurveyService = exports.updateSurveyStatusService = exports.updateSurveyService = exports.getSurveyByIdService = exports.getAllSurveysService = exports.addSurveyService = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const survey_model_1 = __importDefault(require("../models/survey.model"));
 const country_model_1 = __importDefault(require("../models/country.model"));
 const surveyResponse_model_1 = __importDefault(require("../models/surveyResponse.model"));
 const userSurveyProgress_model_1 = __importDefault(require("../models/userSurveyProgress.model"));
+const user_model_1 = __importStar(require("../models/user.model"));
+const Messages_1 = require("../Constants/Messages");
 const ApiError_1 = __importDefault(require("../global/errors/ApiError"));
 const http_status_1 = __importDefault(require("http-status"));
 const validateSurveyQuestion_1 = require("../Utils/validateSurveyQuestion");
@@ -703,3 +739,109 @@ const getAllUserSurveyResponsesService = (userId, options) => __awaiter(void 0, 
     }
 });
 exports.getAllUserSurveyResponsesService = getAllUserSurveyResponsesService;
+/** Superadmin & admin: all responses. Community admin: responses from users in the same `User.country`. */
+const listAdminSurveyResponsesService = (adminRole, adminCountry, options) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { page, limit, status, surveyId } = options;
+        if (adminRole === user_model_1.UserRole.COMMUNITYADMIN) {
+            if (adminCountry === undefined ||
+                adminCountry === null ||
+                String(adminCountry).trim() === "") {
+                throw new ApiError_1.default(http_status_1.default.FORBIDDEN, Messages_1.ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+            }
+        }
+        const skip = (page - 1) * limit;
+        const query = {};
+        if (surveyId) {
+            if (!mongoose_1.default.Types.ObjectId.isValid(surveyId)) {
+                throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Invalid survey ID");
+            }
+            query.surveyId = new mongoose_1.default.Types.ObjectId(surveyId);
+        }
+        if (status === "complete") {
+            query.isComplete = true;
+        }
+        else if (status === "partial") {
+            query.isPartialSubmission = true;
+        }
+        if (adminRole === user_model_1.UserRole.COMMUNITYADMIN) {
+            const userIds = yield user_model_1.default.find({ country: adminCountry }).distinct("_id");
+            if (!userIds.length) {
+                return {
+                    responses: [],
+                    pagination: {
+                        total: 0,
+                        page,
+                        limit,
+                        totalPages: 0,
+                        hasNextPage: false,
+                        hasPrevPage: page > 1,
+                    },
+                };
+            }
+            query.userId = { $in: userIds };
+        }
+        const total = yield surveyResponse_model_1.default.countDocuments(query);
+        const responses = yield surveyResponse_model_1.default.find(query)
+            .populate({
+            path: "surveyId",
+            select: "title description country",
+            populate: { path: "country", select: "name code" },
+        })
+            .populate({ path: "userId", select: "name email country" })
+            .sort({ submittedAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+        const processedResponses = responses.map((response) => {
+            var _a, _b, _c, _d;
+            const survey = response.surveyId;
+            const u = response.userId;
+            return {
+                responseId: response._id,
+                surveyId: survey === null || survey === void 0 ? void 0 : survey._id,
+                user: u
+                    ? {
+                        id: u._id,
+                        name: u.name,
+                        email: u.email,
+                        country: u.country,
+                    }
+                    : null,
+                survey: survey
+                    ? {
+                        id: survey._id,
+                        title: survey.title,
+                        description: survey.description,
+                        country: survey.country,
+                    }
+                    : null,
+                submittedAt: response.submittedAt,
+                isComplete: response.isComplete,
+                isPartialSubmission: response.isPartialSubmission,
+                completionPercentage: response.completionPercentage,
+                statistics: response.statistics,
+                totalAnswers: (_b = (_a = response.answers) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0,
+                totalSkipped: (_d = (_c = response.skippedQuestions) === null || _c === void 0 ? void 0 : _c.length) !== null && _d !== void 0 ? _d : 0,
+            };
+        });
+        const totalPages = Math.ceil(total / limit) || 0;
+        return {
+            responses: processedResponses,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1,
+            },
+        };
+    }
+    catch (error) {
+        if (error instanceof ApiError_1.default)
+            throw error;
+        throw new ApiError_1.default(error.statusCode || http_status_1.default.INTERNAL_SERVER_ERROR, error.message || "Error fetching survey responses");
+    }
+});
+exports.listAdminSurveyResponsesService = listAdminSurveyResponsesService;

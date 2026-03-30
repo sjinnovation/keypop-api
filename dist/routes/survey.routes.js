@@ -11,6 +11,7 @@ const router = express_1.default.Router();
 // Admin-only routes
 router.post("/", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.addSurvey); // Create survey
 router.get("/all", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.getAllSurveys); // Get all surveys (including inactive)
+router.get("/admin/responses", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.listAdminSurveyResponses);
 // Authenticated User Routes
 router.get("/user-country", userAuthMiddleware_1.authMiddleware, survey_controller_1.getUserCountrySurvey); // Get active survey by user's country (from auth token)
 router.get("/country/:country", userAuthMiddleware_1.authMiddleware, survey_controller_1.getSurveyByCountry); // Get active survey by country

@@ -62,6 +62,9 @@ const user_model_1 = __importStar(require("../models/user.model"));
 const http_status_1 = __importDefault(require("http-status"));
 const Messages_1 = require("../Constants/Messages");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const surveyResponse_model_1 = __importDefault(require("../models/surveyResponse.model"));
+const userSurveyProgress_model_1 = __importDefault(require("../models/userSurveyProgress.model"));
+const mongoose_1 = __importDefault(require("mongoose"));
 const createUserService = (userData) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { email, password } = userData, otherData = __rest(userData, ["email", "password"]);
@@ -113,17 +116,45 @@ const getAdminUsersService = (...args_1) => __awaiter(void 0, [...args_1], void 
     }
 });
 exports.getAdminUsersService = getAdminUsersService;
-const deleteUser = (id) => __awaiter(void 0, void 0, void 0, function* () {
+const deleteUser = (id_1, ...args_1) => __awaiter(void 0, [id_1, ...args_1], void 0, function* (id, forceDelete = false) {
+    const session = yield mongoose_1.default.startSession();
+    session.startTransaction();
     try {
-        const deletedUser = yield user_model_1.default.findByIdAndDelete(id, {
-            returnDocument: 'before'
-        });
-        if (!deletedUser) {
+        const user = yield user_model_1.default.findById(id).session(session);
+        if (!user) {
+            yield session.abortTransaction();
+            session.endSession();
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "User not found or already deleted");
         }
-        return deletedUser;
+        const surveyResponseCount = yield surveyResponse_model_1.default.countDocuments({ userId: id }).session(session);
+        const surveyProgressCount = yield userSurveyProgress_model_1.default.countDocuments({ userId: id }).session(session);
+        const totalSurveyData = surveyResponseCount + surveyProgressCount;
+        if (!forceDelete && totalSurveyData > 0) {
+            yield session.abortTransaction();
+            session.endSession();
+            throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, `User has ${surveyResponseCount} survey response(s) and ${surveyProgressCount} in-progress survey(s). Set forceDelete to true to proceed with deletion.`);
+        }
+        yield surveyResponse_model_1.default.deleteMany({ userId: id }).session(session);
+        yield userSurveyProgress_model_1.default.deleteMany({ userId: id }).session(session);
+        const deletedUser = yield user_model_1.default.findByIdAndDelete(id, {
+            session,
+            returnDocument: 'before'
+        });
+        yield session.commitTransaction();
+        session.endSession();
+        console.log(`User deleted successfully. Cleaned up ${surveyResponseCount} survey responses and ${surveyProgressCount} progress records.`);
+        return {
+            user: deletedUser,
+            deletedSurveyData: {
+                surveyResponses: surveyResponseCount,
+                surveyProgress: surveyProgressCount,
+                total: totalSurveyData
+            }
+        };
     }
     catch (error) {
+        yield session.abortTransaction();
+        session.endSession();
         if (error instanceof ApiError_1.default) {
             throw error;
         }

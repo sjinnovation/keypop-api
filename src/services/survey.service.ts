@@ -1,7 +1,10 @@
+import mongoose from "mongoose";
 import Survey from "../models/survey.model";
 import Country from "../models/country.model";
 import SurveyResponse from "../models/surveyResponse.model";
 import UserSurveyProgress from "../models/userSurveyProgress.model";
+import User, { UserRole } from "../models/user.model";
+import { ApiMessages } from "../Constants/Messages";
 import ApiError from "../global/errors/ApiError";
 import httpStatus from "http-status";
 import { validateSurveyQuestions } from "../Utils/validateSurveyQuestion";
@@ -797,6 +800,126 @@ export const getAllUserSurveyResponsesService = async (
       }
     };
   } catch (error: any) {
+    throw new ApiError(
+      error.statusCode || httpStatus.INTERNAL_SERVER_ERROR,
+      error.message || "Error fetching survey responses"
+    );
+  }
+};
+
+/** Superadmin & admin: all responses. Community admin: responses from users in the same `User.country`. */
+export const listAdminSurveyResponsesService = async (
+  adminRole: UserRole,
+  adminCountry: string | undefined,
+  options: { surveyId?: string; page: number; limit: number; status?: string }
+) => {
+  try {
+    const { page, limit, status, surveyId } = options;
+
+    if (adminRole === UserRole.COMMUNITYADMIN) {
+      if (
+        adminCountry === undefined ||
+        adminCountry === null ||
+        String(adminCountry).trim() === ""
+      ) {
+        throw new ApiError(httpStatus.FORBIDDEN, ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+      }
+    }
+
+    const skip = (page - 1) * limit;
+    const query: Record<string, unknown> = {};
+
+    if (surveyId) {
+      if (!mongoose.Types.ObjectId.isValid(surveyId)) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Invalid survey ID");
+      }
+      query.surveyId = new mongoose.Types.ObjectId(surveyId);
+    }
+
+    if (status === "complete") {
+      query.isComplete = true;
+    } else if (status === "partial") {
+      query.isPartialSubmission = true;
+    }
+
+    if (adminRole === UserRole.COMMUNITYADMIN) {
+      const userIds = await User.find({ country: adminCountry }).distinct("_id");
+      if (!userIds.length) {
+        return {
+          responses: [],
+          pagination: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: page > 1,
+          },
+        };
+      }
+      query.userId = { $in: userIds };
+    }
+
+    const total = await SurveyResponse.countDocuments(query);
+    const responses = await SurveyResponse.find(query)
+      .populate({
+        path: "surveyId",
+        select: "title description country",
+        populate: { path: "country", select: "name code" },
+      })
+      .populate({ path: "userId", select: "name email country" })
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const processedResponses = responses.map((response: any) => {
+      const survey = response.surveyId;
+      const u = response.userId;
+      return {
+        responseId: response._id,
+        surveyId: survey?._id,
+        user: u
+          ? {
+              id: u._id,
+              name: u.name,
+              email: u.email,
+              country: u.country,
+            }
+          : null,
+        survey: survey
+          ? {
+              id: survey._id,
+              title: survey.title,
+              description: survey.description,
+              country: survey.country,
+            }
+          : null,
+        submittedAt: response.submittedAt,
+        isComplete: response.isComplete,
+        isPartialSubmission: response.isPartialSubmission,
+        completionPercentage: response.completionPercentage,
+        statistics: response.statistics,
+        totalAnswers: response.answers?.length ?? 0,
+        totalSkipped: response.skippedQuestions?.length ?? 0,
+      };
+    });
+
+    const totalPages = Math.ceil(total / limit) || 0;
+
+    return {
+      responses: processedResponses,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    };
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(
       error.statusCode || httpStatus.INTERNAL_SERVER_ERROR,
       error.message || "Error fetching survey responses"

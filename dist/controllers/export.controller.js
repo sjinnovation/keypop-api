@@ -41,7 +41,11 @@ exports.exportSurveyResponse = (0, catchAsync_1.default)((req, res) => __awaiter
     if (!format || !['pdf', 'csv'].includes(format)) {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
     }
-    const { buffer, fileName } = yield (0, export_service_1.exportSurveyResponseService)(userId, surveyId, format);
+    const scope = {
+        role: req.user.role,
+        adminCountry: req.user.country,
+    };
+    const { buffer, fileName } = yield (0, export_service_1.exportSurveyResponseService)(userId, surveyId, format, scope);
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
     res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");
     res.status(http_status_1.default.OK).send(buffer);
@@ -53,7 +57,11 @@ exports.exportAllSurveyResponses = (0, catchAsync_1.default)((req, res) => __awa
     if (!format || !['pdf', 'csv'].includes(format)) {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
     }
-    const { buffer, fileName } = yield (0, export_service_1.exportAllSurveyResponsesService)(surveyId, format);
+    const scope = {
+        role: req.user.role,
+        adminCountry: req.user.country,
+    };
+    const { buffer, fileName } = yield (0, export_service_1.exportAllSurveyResponsesService)(surveyId, format, scope);
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`); // Fixed: Added backticks
     res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");
     res.status(http_status_1.default.OK).send(buffer);
@@ -65,7 +73,11 @@ exports.exportSurveySummary = (0, catchAsync_1.default)((req, res) => __awaiter(
     if (!format || !['pdf', 'csv'].includes(format)) {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
     }
-    const { buffer, fileName } = yield (0, export_service_1.exportSurveySummaryService)(surveyId, format);
+    const scope = {
+        role: req.user.role,
+        adminCountry: req.user.country,
+    };
+    const { buffer, fileName } = yield (0, export_service_1.exportSurveySummaryService)(surveyId, format, scope);
     res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
     res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");
     res.status(http_status_1.default.OK).send(buffer);

@@ -13,7 +13,8 @@ import {
     updateUserSurveyProgress,
     getUserCountrySurvey,
     getAllUserSurveyResponses,
-    getUserSurveyResponse
+    getUserSurveyResponse,
+    listAdminSurveyResponses
 } from "../controllers/survey.controller";
 
 const router = express.Router();
@@ -21,7 +22,7 @@ const router = express.Router();
 // Admin-only routes
 router.post("/", authMiddleware, requireAdminRole, addSurvey);             // Create survey
 router.get("/all", authMiddleware, requireAdminRole, getAllSurveys);       // Get all surveys (including inactive)
-
+router.get("/admin/responses", authMiddleware, requireAdminRole, listAdminSurveyResponses);
 
 // Authenticated User Routes
 router.get("/user-country", authMiddleware, getUserCountrySurvey);          // Get active survey by user's country (from auth token)

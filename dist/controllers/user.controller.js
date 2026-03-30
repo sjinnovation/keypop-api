@@ -67,6 +67,7 @@ exports.getAdminUsers = (0, catchAsync_1.default)((req, res) => __awaiter(void 0
 }));
 exports.removeUser = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
+    const { forceDelete } = req.query;
     if (!mongoose_1.default.Types.ObjectId.isValid(id)) {
         throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Invalid user ID format");
     }
@@ -79,8 +80,9 @@ exports.removeUser = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
         name: user.name,
         _id: user._id
     };
-    const deletedUser = yield (0, user_service_1.deleteUser)(id);
-    if (!deletedUser) {
+    const shouldForceDelete = forceDelete === 'true' || forceDelete === '1';
+    const deletionResult = yield (0, user_service_1.deleteUser)(id, shouldForceDelete);
+    if (!deletionResult) {
         throw new ApiError_1.default(http_status_1.default.INTERNAL_SERVER_ERROR, "Failed to delete user from database");
     }
     if (userData.email && userData.name) {
@@ -88,12 +90,14 @@ exports.removeUser = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, v
             console.error(`Failed to send account deletion email to ${userData.email}:`, emailError);
         });
     }
+    const hasSurveyData = deletionResult.deletedSurveyData.total > 0;
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
-        message: Messages_1.ApiMessages.USER_DELETED,
+        message: hasSurveyData ? Messages_1.ApiMessages.USER_DELETED_WITH_DATA : Messages_1.ApiMessages.USER_DELETED,
         data: {
-            deletedUserId: userData._id
+            deletedUserId: userData._id,
+            deletedSurveyData: deletionResult.deletedSurveyData
         }
     });
 }));

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import catchAsync from "../global/middlewares/catchAsync";
 import httpStatus from "http-status";
 import { ApiMessages } from "../Constants/Messages";
-import { exportDataService, exportAllSurveyResponsesService, exportSurveyResponseService, exportSurveySummaryService } from "../services/export.service";
+import { AdminExportScope, exportDataService, exportAllSurveyResponsesService, exportSurveyResponseService, exportSurveySummaryService } from "../services/export.service";
 import ApiError from "../global/errors/ApiError";
 
 export const exportData = catchAsync(async (req: Request, res: Response) => {
@@ -51,7 +51,11 @@ export const exportSurveyResponse = catchAsync(async (req: Request, res: Respons
     throw new ApiError(httpStatus.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
   }
 
-  const { buffer, fileName } = await exportSurveyResponseService(userId, surveyId, format);
+  const scope: AdminExportScope = {
+    role: req.user.role,
+    adminCountry: req.user.country,
+  };
+  const { buffer, fileName } = await exportSurveyResponseService(userId, surveyId, format, scope);
 
   res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
   res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");
@@ -67,7 +71,11 @@ export const exportAllSurveyResponses = catchAsync(async (req: Request, res: Res
     throw new ApiError(httpStatus.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
   }
 
-  const { buffer, fileName } = await exportAllSurveyResponsesService(surveyId, format);
+  const scope: AdminExportScope = {
+    role: req.user.role,
+    adminCountry: req.user.country,
+  };
+  const { buffer, fileName } = await exportAllSurveyResponsesService(surveyId, format, scope);
 
   res.setHeader("Content-Disposition", `attachment; filename=${fileName}`); // Fixed: Added backticks
   res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");
@@ -83,7 +91,11 @@ export const exportSurveySummary = catchAsync(async (req: Request, res: Response
     throw new ApiError(httpStatus.BAD_REQUEST, "Format must be 'pdf' or 'csv'");
   }
 
-  const { buffer, fileName } = await exportSurveySummaryService(surveyId, format);
+  const scope: AdminExportScope = {
+    role: req.user.role,
+    adminCountry: req.user.country,
+  };
+  const { buffer, fileName } = await exportSurveySummaryService(surveyId, format, scope);
 
   res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
   res.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "text/csv");

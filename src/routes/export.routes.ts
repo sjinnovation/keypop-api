@@ -6,8 +6,8 @@ import { exportAllSurveyResponses, exportData, exportSurveyResponse, exportSurve
 const router = express.Router();
 
 router.post("/", authMiddleware, requireAdminRole, exportData);
-router.get("/response/:userId/:surveyId", authMiddleware, exportSurveyResponse);
-router.get("/all-responses/:surveyId", authMiddleware, exportAllSurveyResponses);
-router.get("/summary/:surveyId", authMiddleware, exportSurveySummary);
+router.get("/response/:userId/:surveyId", authMiddleware, requireAdminRole, exportSurveyResponse);
+router.get("/all-responses/:surveyId", authMiddleware, requireAdminRole, exportAllSurveyResponses);
+router.get("/summary/:surveyId", authMiddleware, requireAdminRole, exportSurveySummary);
 
 export default router;

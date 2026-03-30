@@ -3,7 +3,34 @@ import ApiError from "../global/errors/ApiError";
 import httpStatus from "http-status";
 import Survey, { AnswerType, KeyPopulation } from "../models/survey.model";
 import SurveyResponse from "../models/surveyResponse.model";
+import User, { UserRole } from "../models/user.model";
+import { ApiMessages } from "../Constants/Messages";
 import { generateAllResponsesCSV, generateAllResponsesPDF, generateSurveyResponseCSV, generateSurveyResponsePDF, generateSurveySummaryCSV, generateSurveySummaryPDF } from "../Utils/surveyExport";
+
+export type AdminExportScope = {
+  role: UserRole;
+  adminCountry?: string;
+};
+
+const assertCommunityAdminHasCountry = (scope: AdminExportScope) => {
+  if (scope.role !== UserRole.COMMUNITYADMIN) return;
+  if (
+    scope.adminCountry === undefined ||
+    scope.adminCountry === null ||
+    String(scope.adminCountry).trim() === ""
+  ) {
+    throw new ApiError(httpStatus.FORBIDDEN, ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+  }
+};
+
+/** For community admins, IDs of users in their country; otherwise null (no extra filter). */
+const communityRespondentIds = async (
+  scope: AdminExportScope | undefined
+): Promise<unknown[] | null> => {
+  if (!scope || scope.role !== UserRole.COMMUNITYADMIN) return null;
+  assertCommunityAdminHasCountry(scope);
+  return User.find({ country: scope.adminCountry }).distinct("_id");
+};
 
 export const exportDataService = async (
   type: string,
@@ -43,12 +70,13 @@ export const exportDataService = async (
 export const exportSurveyResponseService = async (
   userId: string,
   surveyId: string,
-  format: 'pdf' | 'csv'
+  format: 'pdf' | 'csv',
+  scope?: AdminExportScope
 ): Promise<{ buffer: Buffer; fileName: string }> => {
   try {
     // Fetch survey response with populated data
     const response = await SurveyResponse.findOne({ userId, surveyId })
-      .populate({ path: 'userId', select: 'name email' })
+      .populate({ path: 'userId', select: 'name email country' })
       .populate({
         path: 'surveyId',
         select: 'title country categories questions',
@@ -57,6 +85,18 @@ export const exportSurveyResponseService = async (
 
     if (!response) {
       throw new ApiError(httpStatus.NOT_FOUND, "Survey response not found");
+    }
+
+    if (scope?.role === UserRole.COMMUNITYADMIN) {
+      assertCommunityAdminHasCountry(scope);
+      const subject = response.userId as { country?: string } | null;
+      const uCountry = subject?.country != null ? String(subject.country) : "";
+      if (uCountry !== String(scope.adminCountry)) {
+        throw new ApiError(
+          httpStatus.FORBIDDEN,
+          "You can only export responses from users in your community"
+        );
+      }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -89,7 +129,8 @@ export const exportSurveyResponseService = async (
 // Export all responses for a survey
 export const exportAllSurveyResponsesService = async (
   surveyId: string,
-  format: 'pdf' | 'csv'
+  format: 'pdf' | 'csv',
+  scope?: AdminExportScope
 ): Promise<{ buffer: Buffer; fileName: string }> => {
   try {
     const survey = await Survey.findById(surveyId)
@@ -100,12 +141,23 @@ export const exportAllSurveyResponsesService = async (
       throw new ApiError(httpStatus.NOT_FOUND, "Survey not found");
     }
 
-    const responses = await SurveyResponse.find({ surveyId })
-      .populate('userId', 'name email')
+    const responseQuery: Record<string, unknown> = { surveyId };
+    const scopedIds = await communityRespondentIds(scope);
+    if (scopedIds !== null) {
+      responseQuery.userId = { $in: scopedIds };
+    }
+
+    const responses = await SurveyResponse.find(responseQuery)
+      .populate('userId', 'name email country')
       .sort({ submittedAt: -1 });
 
     if (responses.length === 0) {
-      throw new ApiError(httpStatus.NOT_FOUND, "No responses found for this survey");
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        scope?.role === UserRole.COMMUNITYADMIN
+          ? "No responses found for this survey in your community"
+          : "No responses found for this survey"
+      );
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -204,7 +256,8 @@ export const exportAllSurveyResponsesService = async (
 // Export survey summary/analytics
 export const exportSurveySummaryService = async (
   surveyId: string,
-  format: 'pdf' | 'csv'
+  format: 'pdf' | 'csv',
+  scope?: AdminExportScope
 ): Promise<{ buffer: Buffer; fileName: string }> => {
   try {
     const survey = await Survey.findById(surveyId)
@@ -214,7 +267,20 @@ export const exportSurveySummaryService = async (
       throw new ApiError(httpStatus.NOT_FOUND, "Survey not found");
     }
 
-    const responses = await SurveyResponse.find({ surveyId });
+    const responseQuery: Record<string, unknown> = { surveyId };
+    const scopedIds = await communityRespondentIds(scope);
+    if (scopedIds !== null) {
+      responseQuery.userId = { $in: scopedIds };
+    }
+
+    const responses = await SurveyResponse.find(responseQuery);
+
+    if (scope?.role === UserRole.COMMUNITYADMIN && responses.length === 0) {
+      throw new ApiError(
+        httpStatus.NOT_FOUND,
+        "No responses found for this survey in your community"
+      );
+    }
 
     // Calculate analytics
     const analytics = calculateSurveyAnalytics(survey, responses);

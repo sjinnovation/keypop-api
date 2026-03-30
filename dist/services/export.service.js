@@ -51,7 +51,25 @@ const ApiError_1 = __importDefault(require("../global/errors/ApiError"));
 const http_status_1 = __importDefault(require("http-status"));
 const survey_model_1 = __importStar(require("../models/survey.model"));
 const surveyResponse_model_1 = __importDefault(require("../models/surveyResponse.model"));
+const user_model_1 = __importStar(require("../models/user.model"));
+const Messages_1 = require("../Constants/Messages");
 const surveyExport_1 = require("../Utils/surveyExport");
+const assertCommunityAdminHasCountry = (scope) => {
+    if (scope.role !== user_model_1.UserRole.COMMUNITYADMIN)
+        return;
+    if (scope.adminCountry === undefined ||
+        scope.adminCountry === null ||
+        String(scope.adminCountry).trim() === "") {
+        throw new ApiError_1.default(http_status_1.default.FORBIDDEN, Messages_1.ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+    }
+};
+/** For community admins, IDs of users in their country; otherwise null (no extra filter). */
+const communityRespondentIds = (scope) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!scope || scope.role !== user_model_1.UserRole.COMMUNITYADMIN)
+        return null;
+    assertCommunityAdminHasCountry(scope);
+    return user_model_1.default.find({ country: scope.adminCountry }).distinct("_id");
+});
 const exportDataService = (type, tableData) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -77,11 +95,11 @@ const exportDataService = (type, tableData) => __awaiter(void 0, void 0, void 0,
 });
 exports.exportDataService = exportDataService;
 // Export single user's survey response
-const exportSurveyResponseService = (userId, surveyId, format) => __awaiter(void 0, void 0, void 0, function* () {
+const exportSurveyResponseService = (userId, surveyId, format, scope) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Fetch survey response with populated data
         const response = yield surveyResponse_model_1.default.findOne({ userId, surveyId })
-            .populate({ path: 'userId', select: 'name email' })
+            .populate({ path: 'userId', select: 'name email country' })
             .populate({
             path: 'surveyId',
             select: 'title country categories questions',
@@ -89,6 +107,14 @@ const exportSurveyResponseService = (userId, surveyId, format) => __awaiter(void
         });
         if (!response) {
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "Survey response not found");
+        }
+        if ((scope === null || scope === void 0 ? void 0 : scope.role) === user_model_1.UserRole.COMMUNITYADMIN) {
+            assertCommunityAdminHasCountry(scope);
+            const subject = response.userId;
+            const uCountry = (subject === null || subject === void 0 ? void 0 : subject.country) != null ? String(subject.country) : "";
+            if (uCountry !== String(scope.adminCountry)) {
+                throw new ApiError_1.default(http_status_1.default.FORBIDDEN, "You can only export responses from users in your community");
+            }
         }
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         let buffer;
@@ -113,7 +139,7 @@ const exportSurveyResponseService = (userId, surveyId, format) => __awaiter(void
 });
 exports.exportSurveyResponseService = exportSurveyResponseService;
 // Export all responses for a survey
-const exportAllSurveyResponsesService = (surveyId, format) => __awaiter(void 0, void 0, void 0, function* () {
+const exportAllSurveyResponsesService = (surveyId, format, scope) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
         const survey = yield survey_model_1.default.findById(surveyId)
@@ -122,11 +148,18 @@ const exportAllSurveyResponsesService = (surveyId, format) => __awaiter(void 0, 
         if (!survey) {
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "Survey not found");
         }
-        const responses = yield surveyResponse_model_1.default.find({ surveyId })
-            .populate('userId', 'name email')
+        const responseQuery = { surveyId };
+        const scopedIds = yield communityRespondentIds(scope);
+        if (scopedIds !== null) {
+            responseQuery.userId = { $in: scopedIds };
+        }
+        const responses = yield surveyResponse_model_1.default.find(responseQuery)
+            .populate('userId', 'name email country')
             .sort({ submittedAt: -1 });
         if (responses.length === 0) {
-            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "No responses found for this survey");
+            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, (scope === null || scope === void 0 ? void 0 : scope.role) === user_model_1.UserRole.COMMUNITYADMIN
+                ? "No responses found for this survey in your community"
+                : "No responses found for this survey");
         }
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         let buffer;
@@ -210,14 +243,22 @@ const exportAllSurveyResponsesService = (surveyId, format) => __awaiter(void 0, 
 });
 exports.exportAllSurveyResponsesService = exportAllSurveyResponsesService;
 // Export survey summary/analytics
-const exportSurveySummaryService = (surveyId, format) => __awaiter(void 0, void 0, void 0, function* () {
+const exportSurveySummaryService = (surveyId, format, scope) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const survey = yield survey_model_1.default.findById(surveyId)
             .populate('country', 'name');
         if (!survey) {
             throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "Survey not found");
         }
-        const responses = yield surveyResponse_model_1.default.find({ surveyId });
+        const responseQuery = { surveyId };
+        const scopedIds = yield communityRespondentIds(scope);
+        if (scopedIds !== null) {
+            responseQuery.userId = { $in: scopedIds };
+        }
+        const responses = yield surveyResponse_model_1.default.find(responseQuery);
+        if ((scope === null || scope === void 0 ? void 0 : scope.role) === user_model_1.UserRole.COMMUNITYADMIN && responses.length === 0) {
+            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "No responses found for this survey in your community");
+        }
         // Calculate analytics
         const analytics = calculateSurveyAnalytics(survey, responses);
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
