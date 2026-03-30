@@ -926,3 +926,83 @@ export const listAdminSurveyResponsesService = async (
     );
   }
 };
+
+async function refreshSurveyHasResponsesFlag(surveyId: mongoose.Types.ObjectId | string) {
+  const count = await SurveyResponse.countDocuments({ surveyId });
+  await Survey.findByIdAndUpdate(surveyId, { hasResponses: count > 0 });
+}
+
+/** Admin: delete any response (community admin: only if respondent’s country matches). */
+export const deleteAdminSurveyResponseService = async (
+  responseId: string,
+  adminRole: UserRole,
+  adminCountry: string | undefined
+) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(responseId)) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid response ID");
+    }
+
+    const doc = await SurveyResponse.findById(responseId).populate({
+      path: "userId",
+      select: "country",
+    });
+    if (!doc) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Survey response not found");
+    }
+
+    if (adminRole === UserRole.COMMUNITYADMIN) {
+      if (
+        adminCountry === undefined ||
+        adminCountry === null ||
+        String(adminCountry).trim() === ""
+      ) {
+        throw new ApiError(httpStatus.FORBIDDEN, ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+      }
+      const subject = doc.userId as { country?: string } | null;
+      const uCountry = subject?.country != null ? String(subject.country) : "";
+      if (uCountry !== String(adminCountry)) {
+        throw new ApiError(
+          httpStatus.FORBIDDEN,
+          "You can only delete responses from users in your community"
+        );
+      }
+    }
+
+    const surveyId = doc.surveyId;
+    await doc.deleteOne();
+    await refreshSurveyHasResponsesFlag(surveyId);
+
+    return { deletedResponseId: responseId, surveyId };
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      error.statusCode || httpStatus.INTERNAL_SERVER_ERROR,
+      error.message || "Error deleting survey response"
+    );
+  }
+};
+
+/** Participant: delete their own submitted response for a survey. */
+export const deleteOwnSurveyResponseService = async (userId: string, surveyId: string) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(surveyId)) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid survey ID");
+    }
+
+    const doc = await SurveyResponse.findOneAndDelete({ userId, surveyId });
+    if (!doc) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Survey response not found");
+    }
+
+    await refreshSurveyHasResponsesFlag(surveyId);
+
+    return { deleted: true, surveyId };
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      error.statusCode || httpStatus.INTERNAL_SERVER_ERROR,
+      error.message || "Error deleting survey response"
+    );
+  }
+};

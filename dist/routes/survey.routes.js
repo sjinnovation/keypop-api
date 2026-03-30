@@ -12,6 +12,7 @@ const router = express_1.default.Router();
 router.post("/", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.addSurvey); // Create survey
 router.get("/all", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.getAllSurveys); // Get all surveys (including inactive)
 router.get("/admin/responses", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.listAdminSurveyResponses);
+router.delete("/admin/responses/:responseId", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.deleteAdminSurveyResponse);
 // Authenticated User Routes
 router.get("/user-country", userAuthMiddleware_1.authMiddleware, survey_controller_1.getUserCountrySurvey); // Get active survey by user's country (from auth token)
 router.get("/country/:country", userAuthMiddleware_1.authMiddleware, survey_controller_1.getSurveyByCountry); // Get active survey by country
@@ -20,6 +21,7 @@ router.get("/progress", userAuthMiddleware_1.authMiddleware, survey_controller_1
 router.put("/progress", userAuthMiddleware_1.authMiddleware, survey_controller_1.updateUserSurveyProgress); // Update/save progress (by section)
 router.get("/responses", userAuthMiddleware_1.authMiddleware, survey_controller_1.getAllUserSurveyResponses); // Get all responses
 router.get("/response/:surveyId", userAuthMiddleware_1.authMiddleware, survey_controller_1.getUserSurveyResponse); // Get specific response
+router.delete("/response/:surveyId", userAuthMiddleware_1.authMiddleware, survey_controller_1.deleteOwnSurveyResponse); // Delete own submitted response
 // Admin Routes for Survey Management
 router.get("/:id", userAuthMiddleware_1.authMiddleware, survey_controller_1.getSurveyById); // Get survey by ID
 router.put("/:id", userAuthMiddleware_1.authMiddleware, requireAdminRole_1.requireAdminRole, survey_controller_1.updateSurvey); // Update survey

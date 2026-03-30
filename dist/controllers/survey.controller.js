@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listAdminSurveyResponses = exports.getAllUserSurveyResponses = exports.getUserSurveyResponse = exports.getUserCountrySurvey = exports.updateUserSurveyProgress = exports.getUserSurveyProgress = exports.submitSurveyResponse = exports.getSurveyByCountry = exports.updateSurvey = exports.deleteSurvey = exports.updateSurveyStatus = exports.getSurveyById = exports.getAllSurveys = exports.addSurvey = void 0;
+exports.listAdminSurveyResponses = exports.deleteOwnSurveyResponse = exports.deleteAdminSurveyResponse = exports.getAllUserSurveyResponses = exports.getUserSurveyResponse = exports.getUserCountrySurvey = exports.updateUserSurveyProgress = exports.getUserSurveyProgress = exports.submitSurveyResponse = exports.getSurveyByCountry = exports.updateSurvey = exports.deleteSurvey = exports.updateSurveyStatus = exports.getSurveyById = exports.getAllSurveys = exports.addSurvey = void 0;
 const catchAsync_1 = __importDefault(require("../global/middlewares/catchAsync"));
 const sendResponse_1 = __importDefault(require("../global/middlewares/sendResponse"));
 const http_status_1 = __importDefault(require("http-status"));
@@ -200,6 +200,28 @@ exports.getAllUserSurveyResponses = (0, catchAsync_1.default)((req, res) => __aw
         success: true,
         message: "Survey responses fetched successfully",
         data: responses,
+    });
+}));
+exports.deleteAdminSurveyResponse = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { responseId } = req.params;
+    const { user } = req;
+    const data = yield (0, survey_service_1.deleteAdminSurveyResponseService)(responseId, user.role, user.country);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: Messages_1.ApiMessages.SURVEY_RESPONSE_DELETED,
+        data,
+    });
+}));
+exports.deleteOwnSurveyResponse = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { surveyId } = req.params;
+    const { user } = req;
+    const data = yield (0, survey_service_1.deleteOwnSurveyResponseService)(user.id, surveyId);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.OK,
+        success: true,
+        message: Messages_1.ApiMessages.SURVEY_RESPONSE_DELETED,
+        data,
     });
 }));
 /** Superadmin & admin: all responses. Community admin: same `User.country` as respondents. */

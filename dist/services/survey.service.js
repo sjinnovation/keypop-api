@@ -45,7 +45,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listAdminSurveyResponsesService = exports.getAllUserSurveyResponsesService = exports.getUserSurveyResponseService = exports.getUserCountrySurveyService = exports.updateUserSurveyProgressService = exports.getUserSurveyProgressService = exports.submitSurveyResponseService = exports.getSurveyByCountryService = exports.deleteSurveyService = exports.updateSurveyStatusService = exports.updateSurveyService = exports.getSurveyByIdService = exports.getAllSurveysService = exports.addSurveyService = void 0;
+exports.deleteOwnSurveyResponseService = exports.deleteAdminSurveyResponseService = exports.listAdminSurveyResponsesService = exports.getAllUserSurveyResponsesService = exports.getUserSurveyResponseService = exports.getUserCountrySurveyService = exports.updateUserSurveyProgressService = exports.getUserSurveyProgressService = exports.submitSurveyResponseService = exports.getSurveyByCountryService = exports.deleteSurveyService = exports.updateSurveyStatusService = exports.updateSurveyService = exports.getSurveyByIdService = exports.getAllSurveysService = exports.addSurveyService = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const survey_model_1 = __importDefault(require("../models/survey.model"));
 const country_model_1 = __importDefault(require("../models/country.model"));
@@ -845,3 +845,66 @@ const listAdminSurveyResponsesService = (adminRole, adminCountry, options) => __
     }
 });
 exports.listAdminSurveyResponsesService = listAdminSurveyResponsesService;
+function refreshSurveyHasResponsesFlag(surveyId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const count = yield surveyResponse_model_1.default.countDocuments({ surveyId });
+        yield survey_model_1.default.findByIdAndUpdate(surveyId, { hasResponses: count > 0 });
+    });
+}
+/** Admin: delete any response (community admin: only if respondent’s country matches). */
+const deleteAdminSurveyResponseService = (responseId, adminRole, adminCountry) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        if (!mongoose_1.default.Types.ObjectId.isValid(responseId)) {
+            throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Invalid response ID");
+        }
+        const doc = yield surveyResponse_model_1.default.findById(responseId).populate({
+            path: "userId",
+            select: "country",
+        });
+        if (!doc) {
+            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "Survey response not found");
+        }
+        if (adminRole === user_model_1.UserRole.COMMUNITYADMIN) {
+            if (adminCountry === undefined ||
+                adminCountry === null ||
+                String(adminCountry).trim() === "") {
+                throw new ApiError_1.default(http_status_1.default.FORBIDDEN, Messages_1.ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+            }
+            const subject = doc.userId;
+            const uCountry = (subject === null || subject === void 0 ? void 0 : subject.country) != null ? String(subject.country) : "";
+            if (uCountry !== String(adminCountry)) {
+                throw new ApiError_1.default(http_status_1.default.FORBIDDEN, "You can only delete responses from users in your community");
+            }
+        }
+        const surveyId = doc.surveyId;
+        yield doc.deleteOne();
+        yield refreshSurveyHasResponsesFlag(surveyId);
+        return { deletedResponseId: responseId, surveyId };
+    }
+    catch (error) {
+        if (error instanceof ApiError_1.default)
+            throw error;
+        throw new ApiError_1.default(error.statusCode || http_status_1.default.INTERNAL_SERVER_ERROR, error.message || "Error deleting survey response");
+    }
+});
+exports.deleteAdminSurveyResponseService = deleteAdminSurveyResponseService;
+/** Participant: delete their own submitted response for a survey. */
+const deleteOwnSurveyResponseService = (userId, surveyId) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        if (!mongoose_1.default.Types.ObjectId.isValid(surveyId)) {
+            throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, "Invalid survey ID");
+        }
+        const doc = yield surveyResponse_model_1.default.findOneAndDelete({ userId, surveyId });
+        if (!doc) {
+            throw new ApiError_1.default(http_status_1.default.NOT_FOUND, "Survey response not found");
+        }
+        yield refreshSurveyHasResponsesFlag(surveyId);
+        return { deleted: true, surveyId };
+    }
+    catch (error) {
+        if (error instanceof ApiError_1.default)
+            throw error;
+        throw new ApiError_1.default(error.statusCode || http_status_1.default.INTERNAL_SERVER_ERROR, error.message || "Error deleting survey response");
+    }
+});
+exports.deleteOwnSurveyResponseService = deleteOwnSurveyResponseService;

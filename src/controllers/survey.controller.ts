@@ -17,7 +17,9 @@ import {
     getUserCountrySurveyService,
     getUserSurveyResponseService,
     getAllUserSurveyResponsesService,
-    listAdminSurveyResponsesService
+    listAdminSurveyResponsesService,
+    deleteAdminSurveyResponseService,
+    deleteOwnSurveyResponseService,
 } from "../services/survey.service";
 import { validateSurveyQuestions } from "../Utils/validateSurveyQuestion";
 import ApiError from "../global/errors/ApiError";
@@ -223,6 +225,30 @@ export const getAllUserSurveyResponses = catchAsync(async (req: Request, res: Re
       data: responses,
     });
   });
+
+export const deleteAdminSurveyResponse = catchAsync(async (req: Request, res: Response) => {
+  const { responseId } = req.params;
+  const { user } = req;
+  const data = await deleteAdminSurveyResponseService(responseId, user.role, user.country);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: ApiMessages.SURVEY_RESPONSE_DELETED,
+    data,
+  });
+});
+
+export const deleteOwnSurveyResponse = catchAsync(async (req: Request, res: Response) => {
+  const { surveyId } = req.params;
+  const { user } = req;
+  const data = await deleteOwnSurveyResponseService(user.id, surveyId);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: ApiMessages.SURVEY_RESPONSE_DELETED,
+    data,
+  });
+});
 
 /** Superadmin & admin: all responses. Community admin: same `User.country` as respondents. */
 export const listAdminSurveyResponses = catchAsync(async (req: Request, res: Response) => {

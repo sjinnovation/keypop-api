@@ -14,7 +14,9 @@ import {
     getUserCountrySurvey,
     getAllUserSurveyResponses,
     getUserSurveyResponse,
-    listAdminSurveyResponses
+    listAdminSurveyResponses,
+    deleteAdminSurveyResponse,
+    deleteOwnSurveyResponse,
 } from "../controllers/survey.controller";
 
 const router = express.Router();
@@ -23,6 +25,7 @@ const router = express.Router();
 router.post("/", authMiddleware, requireAdminRole, addSurvey);             // Create survey
 router.get("/all", authMiddleware, requireAdminRole, getAllSurveys);       // Get all surveys (including inactive)
 router.get("/admin/responses", authMiddleware, requireAdminRole, listAdminSurveyResponses);
+router.delete("/admin/responses/:responseId", authMiddleware, requireAdminRole, deleteAdminSurveyResponse);
 
 // Authenticated User Routes
 router.get("/user-country", authMiddleware, getUserCountrySurvey);          // Get active survey by user's country (from auth token)
@@ -33,6 +36,7 @@ router.put("/progress", authMiddleware, updateUserSurveyProgress);         // Up
 
 router.get("/responses", authMiddleware, getAllUserSurveyResponses); // Get all responses
 router.get("/response/:surveyId", authMiddleware, getUserSurveyResponse); // Get specific response
+router.delete("/response/:surveyId", authMiddleware, deleteOwnSurveyResponse); // Delete own submitted response
 
 // Admin Routes for Survey Management
 router.get("/:id", authMiddleware, getSurveyById);       // Get survey by ID
