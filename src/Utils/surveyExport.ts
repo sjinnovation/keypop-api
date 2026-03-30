@@ -391,31 +391,53 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
             .text(`Export Date: ${new Date().toLocaleString()}`);
         doc.moveDown(2);
 
-        // Response Timeline Chart
+        // Response timeline — text-only for large exports (chart is slow and often causes gateway timeouts)
         doc.fontSize(14).font("Helvetica-Bold")
             .fillColor(colors.primary)
             .text("Response Timeline");
-
+        doc.fontSize(10).font("Helvetica").fillColor(colors.secondary);
         const timelineData = Object.entries(data.responsesByDate).sort((a, b) => a[0].localeCompare(b[0]));
-        const timelineChart = await createChart({
-            type: 'line',
-            data: {
-                labels: timelineData.map(([date]) => date),
-                datasets: [{
-                    label: 'Responses',
-                    data: timelineData.map(([, count]) => count),
-                    borderColor: colors.info,
-                    fill: false
-                }]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true }
-                }
+        const useChart =
+            data.totalResponses <= 40 &&
+            timelineData.length > 0 &&
+            timelineData.length <= 20;
+        if (useChart) {
+            try {
+                const timelineChart = await createChart({
+                    type: 'line',
+                    data: {
+                        labels: timelineData.map(([date]) => date),
+                        datasets: [{
+                            label: 'Responses',
+                            data: timelineData.map(([, count]) => count),
+                            borderColor: colors.info,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+                doc.image(timelineChart, { width: 400 });
+                doc.moveDown(1);
+            } catch {
+                timelineData.forEach(([date, count]) => {
+                    doc.text(`  ${date}: ${count} response(s)`);
+                });
             }
-        });
-        doc.image(timelineChart, { width: 400 });
-        doc.moveDown(2);
+        } else {
+            if (timelineData.length === 0) {
+                doc.text("  No submissions by date.");
+            } else {
+                timelineData.forEach(([date, count]) => {
+                    doc.text(`  ${date}: ${count} response(s)`);
+                });
+            }
+            doc.moveDown(1);
+        }
+        doc.moveDown(1);
 
         // Response Summary
         doc.fontSize(14).font("Helvetica-Bold")
@@ -434,35 +456,38 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
         });
         doc.moveDown();
 
-        // Table rows
+        // Table rows — use a fixed baseline Y per row (using doc.y per column stacked rows and blew up page count / timeouts)
         doc.fontSize(9).font("Helvetica");
+        const qCount = Math.max(1, data.survey.questions?.length || 1);
+        const rowGap = 16;
+        const drawTableHeader = (y: number) => {
+            doc.fontSize(10).font("Helvetica-Bold");
+            tableHeaders.forEach((header, i) => {
+                doc.text(header, 50 + (i * columnWidth), y, { width: columnWidth, align: 'center' });
+            });
+            doc.fontSize(9).font("Helvetica");
+            return y + 22;
+        };
+
+        let y = doc.y + 4;
+        y = drawTableHeader(y);
+
         data.responses.forEach((response: any, index: number) => {
-            const rowTop = doc.y;
-
-            if (rowTop > doc.page.height - 100) {
+            if (y > doc.page.height - 80) {
                 doc.addPage();
-                doc.fontSize(10).font("Helvetica-Bold");
-                tableHeaders.forEach((header, i) => {
-                    doc.text(header, 50 + (i * columnWidth), 50, { width: columnWidth, align: 'center' });
-                });
-                doc.moveDown();
-                doc.fontSize(9).font("Helvetica");
+                y = 50;
+                y = drawTableHeader(y);
             }
 
-            doc.text(`#${index + 1}`, 50, doc.y, { width: columnWidth, align: 'center' });
-            doc.text(response.userName, 50 + columnWidth, doc.y, { width: columnWidth, align: 'center' });
-            doc.text(new Date(response.submittedAt).toLocaleString(), 50 + (2 * columnWidth), doc.y, { width: columnWidth, align: 'center' });
+            const completionRate = (response.answers.length / qCount) * 100;
+            const rowTop = y;
+            doc.text(`#${index + 1}`, 50, y, { width: columnWidth, align: 'center' });
+            doc.text(String(response.userName ?? ''), 50 + columnWidth, y, { width: columnWidth, align: 'center' });
+            doc.text(new Date(response.submittedAt).toLocaleString(), 50 + (2 * columnWidth), y, { width: columnWidth, align: 'center' });
+            doc.text(`${completionRate.toFixed(1)}%`, 50 + (3 * columnWidth), y, { width: columnWidth, align: 'center' });
 
-            const completionRate = (response.answers.length / data.survey.questions.length) * 100;
-            doc.text(`${completionRate.toFixed(1)}%`, 50 + (3 * columnWidth), doc.y, { width: columnWidth, align: 'center' });
-
-            doc.moveDown();
-
-            // Alternate row colors
-            if (index % 2 === 0) {
-                doc.rect(50, rowTop, doc.page.width - 100, doc.y - rowTop - 5)
-                    .fill(colors.light);
-            }
+            y = rowTop + rowGap;
+            doc.y = y;
         });
 
         // Footer
@@ -483,15 +508,37 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
     });
 };
 
+/** Normalize question text for CSV header (must match between header and row keys). */
+const csvQuestionHeaderKey = (q: any): string => {
+    const text = String(q?.text ?? '')
+        .replace(/\r?\n/g, ' ')
+        .replace(/"/g, '""')
+        .trim();
+    const truncated = text.length > 100 ? `${text.slice(0, 97)}...` : text;
+    return `${q?.code ?? 'Q'}: ${truncated}`;
+};
+
+const csvCellFromAnswer = (answer: any): string => {
+    if (!answer) return 'Not Answered';
+    if (answer.formattedValue != null && String(answer.formattedValue).trim() !== '') {
+        return String(answer.formattedValue);
+    }
+    const v = answer.value;
+    if (v == null || v === '') return 'N/A';
+    if (Array.isArray(v)) return v.join('; ');
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+};
+
 // CSV generation for all responses
 export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
+    const questions = Array.isArray(data.survey.questions) ? data.survey.questions : [];
+    const qCount = Math.max(1, questions.length);
     // Prepare headers
     const staticHeaders = [
         'Response ID', 'User Name', 'User Email', 'Submitted At', 'Completion Rate'
     ];
-    const questionHeaders = data.survey.questions.map((q: any) =>
-        `${q.code}: ${q.text.substring(0, 50)}...`
-    );
+    const questionHeaders = questions.map((q: any) => csvQuestionHeaderKey(q));
     const allHeaders = [...staticHeaders, ...questionHeaders];
 
     // Prepare records
@@ -501,14 +548,13 @@ export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
             'User Name': response.userName,
             'User Email': response.userEmail,
             'Submitted At': new Date(response.submittedAt).toLocaleString(),
-            'Completion Rate': `${((response.answers.length / data.survey.questions.length) * 100).toFixed(1)}%`
+            'Completion Rate': `${((response.answers.length / qCount) * 100).toFixed(1)}%`
         };
 
-        // Add answers
-        data.survey.questions.forEach((question: any) => {
+        questions.forEach((question: any) => {
             const answer = response.answers.find((a: any) => a.code === question.code);
-            const headerKey = `${question.code}: ${question.text.substring(0, 50)}...`;
-            record[headerKey] = answer ? answer.formattedValue : 'Not Answered';
+            const headerKey = csvQuestionHeaderKey(question);
+            record[headerKey] = csvCellFromAnswer(answer);
         });
 
         return record;

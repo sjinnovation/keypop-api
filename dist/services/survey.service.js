@@ -797,12 +797,14 @@ const listAdminSurveyResponsesService = (adminRole, adminCountry, options) => __
             var _a, _b, _c, _d;
             const survey = response.surveyId;
             const u = response.userId;
+            const responseIdStr = response._id != null ? String(response._id) : "";
             return {
-                responseId: response._id,
-                surveyId: survey === null || survey === void 0 ? void 0 : survey._id,
+                _id: responseIdStr,
+                responseId: responseIdStr,
+                surveyId: (survey === null || survey === void 0 ? void 0 : survey._id) != null ? String(survey._id) : undefined,
                 user: u
                     ? {
-                        id: u._id,
+                        id: u._id != null ? String(u._id) : undefined,
                         name: u.name,
                         email: u.email,
                         country: u.country,
@@ -810,7 +812,7 @@ const listAdminSurveyResponsesService = (adminRole, adminCountry, options) => __
                     : null,
                 survey: survey
                     ? {
-                        id: survey._id,
+                        id: survey._id != null ? String(survey._id) : undefined,
                         title: survey.title,
                         description: survey.description,
                         country: survey.country,

@@ -876,12 +876,14 @@ export const listAdminSurveyResponsesService = async (
     const processedResponses = responses.map((response: any) => {
       const survey = response.surveyId;
       const u = response.userId;
+      const responseIdStr = response._id != null ? String(response._id) : "";
       return {
-        responseId: response._id,
-        surveyId: survey?._id,
+        _id: responseIdStr,
+        responseId: responseIdStr,
+        surveyId: survey?._id != null ? String(survey._id) : undefined,
         user: u
           ? {
-              id: u._id,
+              id: u._id != null ? String(u._id) : undefined,
               name: u.name,
               email: u.email,
               country: u.country,
@@ -889,7 +891,7 @@ export const listAdminSurveyResponsesService = async (
           : null,
         survey: survey
           ? {
-              id: survey._id,
+              id: survey._id != null ? String(survey._id) : undefined,
               title: survey.title,
               description: survey.description,
               country: survey.country,

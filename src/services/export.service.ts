@@ -212,9 +212,8 @@ export const exportAllSurveyResponsesService = async (
               categoryTitle: category?.title || 'Unknown Category',
               answerType: answer.answerType,
               value: answer.value,
-              // formattedValue: formatAnswerValue(answer.value, answer.answerType),
+              formattedValue: formatAnswerValue(answer.value, answer.answerType),
               keyPopulation: answer.keyPopulation || [],
-              // keyPopulationDisplay: formatKeyPopulation(answer.keyPopulation)
             };
           })
         };
@@ -338,7 +337,10 @@ const prepareResponseData = (response: any) => {
 
 
 // Helper function to format answer values based on type
-const formatAnswerValue = (value: string | number | boolean, answerType: AnswerType): string => {
+const formatAnswerValue = (
+  value: string | number | boolean | null | undefined,
+  answerType: AnswerType
+): string => {
   if (value === null || value === undefined || value === '') {
     return 'N/A';
   }

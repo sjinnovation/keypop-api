@@ -308,7 +308,7 @@ const createChart = (config) => __awaiter(void 0, void 0, void 0, function* () {
 // PDF generation for all responses
 const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, function* () {
     return new Promise((resolve, reject) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a;
+        var _a, _b;
         const doc = new pdfkit_1.default({
             margin: 50,
             size: 'A4',
@@ -350,30 +350,55 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
             .text(`Survey Country: ${((_a = data.survey.country) === null || _a === void 0 ? void 0 : _a.name) || 'N/A'}`)
             .text(`Export Date: ${new Date().toLocaleString()}`);
         doc.moveDown(2);
-        // Response Timeline Chart
+        // Response timeline — text-only for large exports (chart is slow and often causes gateway timeouts)
         doc.fontSize(14).font("Helvetica-Bold")
             .fillColor(colors.primary)
             .text("Response Timeline");
+        doc.fontSize(10).font("Helvetica").fillColor(colors.secondary);
         const timelineData = Object.entries(data.responsesByDate).sort((a, b) => a[0].localeCompare(b[0]));
-        const timelineChart = yield createChart({
-            type: 'line',
-            data: {
-                labels: timelineData.map(([date]) => date),
-                datasets: [{
-                        label: 'Responses',
-                        data: timelineData.map(([, count]) => count),
-                        borderColor: colors.info,
-                        fill: false
-                    }]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true }
-                }
+        const useChart = data.totalResponses <= 40 &&
+            timelineData.length > 0 &&
+            timelineData.length <= 20;
+        if (useChart) {
+            try {
+                const timelineChart = yield createChart({
+                    type: 'line',
+                    data: {
+                        labels: timelineData.map(([date]) => date),
+                        datasets: [{
+                                label: 'Responses',
+                                data: timelineData.map(([, count]) => count),
+                                borderColor: colors.info,
+                                fill: false
+                            }]
+                    },
+                    options: {
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+                doc.image(timelineChart, { width: 400 });
+                doc.moveDown(1);
             }
-        });
-        doc.image(timelineChart, { width: 400 });
-        doc.moveDown(2);
+            catch (_c) {
+                timelineData.forEach(([date, count]) => {
+                    doc.text(`  ${date}: ${count} response(s)`);
+                });
+            }
+        }
+        else {
+            if (timelineData.length === 0) {
+                doc.text("  No submissions by date.");
+            }
+            else {
+                timelineData.forEach(([date, count]) => {
+                    doc.text(`  ${date}: ${count} response(s)`);
+                });
+            }
+            doc.moveDown(1);
+        }
+        doc.moveDown(1);
         // Response Summary
         doc.fontSize(14).font("Helvetica-Bold")
             .fillColor(colors.primary)
@@ -388,30 +413,35 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
             doc.text(header, 50 + (i * columnWidth), tableTop, { width: columnWidth, align: 'center' });
         });
         doc.moveDown();
-        // Table rows
+        // Table rows — use a fixed baseline Y per row (using doc.y per column stacked rows and blew up page count / timeouts)
         doc.fontSize(9).font("Helvetica");
+        const qCount = Math.max(1, ((_b = data.survey.questions) === null || _b === void 0 ? void 0 : _b.length) || 1);
+        const rowGap = 16;
+        const drawTableHeader = (y) => {
+            doc.fontSize(10).font("Helvetica-Bold");
+            tableHeaders.forEach((header, i) => {
+                doc.text(header, 50 + (i * columnWidth), y, { width: columnWidth, align: 'center' });
+            });
+            doc.fontSize(9).font("Helvetica");
+            return y + 22;
+        };
+        let y = doc.y + 4;
+        y = drawTableHeader(y);
         data.responses.forEach((response, index) => {
-            const rowTop = doc.y;
-            if (rowTop > doc.page.height - 100) {
+            var _a;
+            if (y > doc.page.height - 80) {
                 doc.addPage();
-                doc.fontSize(10).font("Helvetica-Bold");
-                tableHeaders.forEach((header, i) => {
-                    doc.text(header, 50 + (i * columnWidth), 50, { width: columnWidth, align: 'center' });
-                });
-                doc.moveDown();
-                doc.fontSize(9).font("Helvetica");
+                y = 50;
+                y = drawTableHeader(y);
             }
-            doc.text(`#${index + 1}`, 50, doc.y, { width: columnWidth, align: 'center' });
-            doc.text(response.userName, 50 + columnWidth, doc.y, { width: columnWidth, align: 'center' });
-            doc.text(new Date(response.submittedAt).toLocaleString(), 50 + (2 * columnWidth), doc.y, { width: columnWidth, align: 'center' });
-            const completionRate = (response.answers.length / data.survey.questions.length) * 100;
-            doc.text(`${completionRate.toFixed(1)}%`, 50 + (3 * columnWidth), doc.y, { width: columnWidth, align: 'center' });
-            doc.moveDown();
-            // Alternate row colors
-            if (index % 2 === 0) {
-                doc.rect(50, rowTop, doc.page.width - 100, doc.y - rowTop - 5)
-                    .fill(colors.light);
-            }
+            const completionRate = (response.answers.length / qCount) * 100;
+            const rowTop = y;
+            doc.text(`#${index + 1}`, 50, y, { width: columnWidth, align: 'center' });
+            doc.text(String((_a = response.userName) !== null && _a !== void 0 ? _a : ''), 50 + columnWidth, y, { width: columnWidth, align: 'center' });
+            doc.text(new Date(response.submittedAt).toLocaleString(), 50 + (2 * columnWidth), y, { width: columnWidth, align: 'center' });
+            doc.text(`${completionRate.toFixed(1)}%`, 50 + (3 * columnWidth), y, { width: columnWidth, align: 'center' });
+            y = rowTop + rowGap;
+            doc.y = y;
         });
         // Footer
         const pages = doc.bufferedPageRange();
@@ -425,14 +455,41 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
     }));
 });
 exports.generateAllResponsesPDF = generateAllResponsesPDF;
+/** Normalize question text for CSV header (must match between header and row keys). */
+const csvQuestionHeaderKey = (q) => {
+    var _a, _b;
+    const text = String((_a = q === null || q === void 0 ? void 0 : q.text) !== null && _a !== void 0 ? _a : '')
+        .replace(/\r?\n/g, ' ')
+        .replace(/"/g, '""')
+        .trim();
+    const truncated = text.length > 100 ? `${text.slice(0, 97)}...` : text;
+    return `${(_b = q === null || q === void 0 ? void 0 : q.code) !== null && _b !== void 0 ? _b : 'Q'}: ${truncated}`;
+};
+const csvCellFromAnswer = (answer) => {
+    if (!answer)
+        return 'Not Answered';
+    if (answer.formattedValue != null && String(answer.formattedValue).trim() !== '') {
+        return String(answer.formattedValue);
+    }
+    const v = answer.value;
+    if (v == null || v === '')
+        return 'N/A';
+    if (Array.isArray(v))
+        return v.join('; ');
+    if (typeof v === 'object')
+        return JSON.stringify(v);
+    return String(v);
+};
 // CSV generation for all responses
 const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
+    const questions = Array.isArray(data.survey.questions) ? data.survey.questions : [];
+    const qCount = Math.max(1, questions.length);
     // Prepare headers
     const staticHeaders = [
         'Response ID', 'User Name', 'User Email', 'Submitted At', 'Completion Rate'
     ];
-    const questionHeaders = data.survey.questions.map((q) => `${q.code}: ${q.text.substring(0, 50)}...`);
+    const questionHeaders = questions.map((q) => csvQuestionHeaderKey(q));
     const allHeaders = [...staticHeaders, ...questionHeaders];
     // Prepare records
     const records = data.responses.map((response, index) => {
@@ -441,13 +498,12 @@ const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, func
             'User Name': response.userName,
             'User Email': response.userEmail,
             'Submitted At': new Date(response.submittedAt).toLocaleString(),
-            'Completion Rate': `${((response.answers.length / data.survey.questions.length) * 100).toFixed(1)}%`
+            'Completion Rate': `${((response.answers.length / qCount) * 100).toFixed(1)}%`
         };
-        // Add answers
-        data.survey.questions.forEach((question) => {
+        questions.forEach((question) => {
             const answer = response.answers.find((a) => a.code === question.code);
-            const headerKey = `${question.code}: ${question.text.substring(0, 50)}...`;
-            record[headerKey] = answer ? answer.formattedValue : 'Not Answered';
+            const headerKey = csvQuestionHeaderKey(question);
+            record[headerKey] = csvCellFromAnswer(answer);
         });
         return record;
     });

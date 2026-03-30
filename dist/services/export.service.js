@@ -207,9 +207,8 @@ const exportAllSurveyResponsesService = (surveyId, format, scope) => __awaiter(v
                             categoryTitle: (category === null || category === void 0 ? void 0 : category.title) || 'Unknown Category',
                             answerType: answer.answerType,
                             value: answer.value,
-                            // formattedValue: formatAnswerValue(answer.value, answer.answerType),
+                            formattedValue: formatAnswerValue(answer.value, answer.answerType),
                             keyPopulation: answer.keyPopulation || [],
-                            // keyPopulationDisplay: formatKeyPopulation(answer.keyPopulation)
                         };
                     })
                 };
