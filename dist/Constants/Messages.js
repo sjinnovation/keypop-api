@@ -49,6 +49,7 @@ var ApiMessages;
     ApiMessages["SURVEY_SUBMITTED"] = "Survey submitted successfully";
     ApiMessages["SURVEY_SUBMISSION_FAILED"] = "Survey submission failed";
     ApiMessages["SURVEY_RESPONSE_FETCHED"] = "Survey response fetched successfully";
+    ApiMessages["ADMIN_SURVEY_RESPONSE_DETAIL"] = "Survey response loaded for review";
     ApiMessages["SURVEY_RESPONSES_FETCHED"] = "Survey responses fetched successfully";
     ApiMessages["COMMUNITY_ADMIN_COUNTRY_REQUIRED"] = "Community admin must have a country assigned";
     ApiMessages["SURVEY_RESPONSE_DELETED"] = "Survey response deleted successfully";

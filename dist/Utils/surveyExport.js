@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateSurveySummaryCSV = exports.generateSurveySummaryPDF = exports.generateAllResponsesCSV = exports.generateAllResponsesPDF = exports.generateSurveyResponseCSVWide = exports.generateSurveyResponseCSV = exports.generateSurveyResponsePDF = void 0;
+exports.generateSurveySummaryCSV = exports.generateSurveySummaryPDF = exports.generateAllResponsesCSV = exports.generateAllResponsesPDF = exports.answerToReadableString = exports.compareQuestionCodes = exports.generateSurveyResponseCSVWide = exports.generateSurveyResponseCSV = exports.generateSurveyResponsePDF = void 0;
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const csv_writer_1 = require("csv-writer");
 const chartjs_node_canvas_1 = require("chartjs-node-canvas");
@@ -318,6 +318,7 @@ const compareQuestionCodes = (a, b) => {
     }
     return String(a).localeCompare(String(b));
 };
+exports.compareQuestionCodes = compareQuestionCodes;
 /** Human-readable answer: Skipped, Yes/No, 4/5, etc. */
 const answerToReadableString = (ans) => {
     if (ans === null || ans === void 0 ? void 0 : ans.skipped)
@@ -336,6 +337,7 @@ const answerToReadableString = (ans) => {
         return JSON.stringify(v);
     return String(v);
 };
+exports.answerToReadableString = answerToReadableString;
 const ensureRoom = (doc, minBottom) => {
     const limit = doc.page.maxY() - minBottom;
     if (doc.y > limit) {
@@ -378,12 +380,21 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
         });
         doc.moveDown(0.5);
         doc.fontSize(16).font("Helvetica").fillColor(colors.secondary).text(data.survey.title, { align: "center" });
-        doc.moveDown(1.2);
+        doc.moveDown(1);
         doc.fontSize(11).font("Helvetica").fillColor(colors.secondary);
         doc.text(`Country / region: ${((_b = data.survey.country) === null || _b === void 0 ? void 0 : _b.name) || "N/A"}`);
         doc.text(`Submissions in this file: ${data.totalResponses}`);
         doc.text(`Exported: ${new Date().toLocaleString()}`);
-        doc.moveDown(1);
+        doc.moveDown(0.8);
+        doc.roundedRect(50, doc.y, doc.page.width - 100, 118, 4).fillAndStroke(colors.light, colors.muted);
+        const guideTop = doc.y + 8;
+        doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.primary).text("How to read this document", 60, guideTop);
+        doc.fontSize(9).font("Helvetica").fillColor("#000000");
+        doc.text("1. This PDF has two parts: (A) this summary and list of everyone who submitted, (B) one chapter per person with every question and answer in survey order.", 60, guideTop + 16, { width: doc.page.width - 120 });
+        doc.text("2. For each person you will see blocks by survey section (e.g. consent, access, quality). Each item shows the question wording, the type of answer (Yes/No, rating 1–5, text, etc.), and the answer they gave.", 60, guideTop + 42, { width: doc.page.width - 120 });
+        doc.text('3. "Question 3 of 24" counts only that person\'s questions so you can see progress through their form.', 60, guideTop + 68, { width: doc.page.width - 120 });
+        doc.y = guideTop + 108;
+        doc.moveDown(0.6);
         doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary).text("Submissions by date");
         doc.fontSize(10).font("Helvetica").fillColor(colors.secondary);
         const timelineData = Object.entries(data.responsesByDate).sort((a, b) => a[0].localeCompare(b[0]));
@@ -402,20 +413,33 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
             const pct = ((response.answers.length / qCount) * 100).toFixed(0);
             doc.text(`  ${index + 1}. ${response.userName || "—"} (${response.userEmail || "—"}) — ${new Date(response.submittedAt).toLocaleString()} — ~${pct}% of questions`);
         });
-        doc.moveDown(1);
-        doc.fontSize(10).font("Helvetica-Oblique").fillColor(colors.muted).text("Next pages: each person’s answers in order — section name, then each question (full wording) and the answer (Yes/No, rating 1–5, Skipped, etc.).", { width: doc.page.width - 100 });
+        doc.moveDown(0.8);
+        doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.primary).text("Next section of the PDF", {
+            underline: true,
+        });
+        doc.fontSize(9).font("Helvetica").fillColor(colors.muted).text("Starting on the following page: the same list as above, but with full question text and each answer, one person at a time.", { width: doc.page.width - 100 });
         data.responses.forEach((response, respIdx) => {
             doc.addPage();
             doc.y = doc.page.margins.top;
-            doc.fontSize(16).font("Helvetica-Bold").fillColor(colors.primary).text(`Respondent ${respIdx + 1} of ${data.totalResponses}`);
-            doc.moveDown(0.4);
-            doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.secondary).text("Respondent");
+            const totalQ = (response.answers || []).length;
+            let qIndex = 0;
+            doc.fontSize(8).font("Helvetica").fillColor(colors.muted).text(`Survey export · ${data.survey.title}`, {
+                width: doc.page.width - 100,
+                align: "right",
+            });
+            doc.moveDown(0.2);
+            doc.fontSize(18).font("Helvetica-Bold").fillColor(colors.primary).text(`Submission ${respIdx + 1} of ${data.totalResponses}`);
+            doc.moveTo(50, doc.y + 2).lineTo(doc.page.width - 50, doc.y + 2).strokeColor(colors.muted).lineWidth(1).stroke();
+            doc.moveDown(0.35);
+            doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.secondary).text("Who submitted");
             doc.fontSize(10).font("Helvetica").fillColor("#000000");
             doc.text(`Name: ${response.userName || "—"}`);
             doc.text(`Email: ${response.userEmail || "—"}`);
             doc.text(`Submitted: ${new Date(response.submittedAt).toLocaleString()}`);
-            doc.text(`Completion: ${response.isComplete ? "Complete" : "Partial"}`);
-            doc.moveDown(0.7);
+            doc.text(`Form status: ${response.isComplete ? "Complete" : "Partial"} · ${totalQ} answers in this export`);
+            doc.moveDown(0.5);
+            doc.fontSize(9).font("Helvetica-Oblique").fillColor(colors.muted).text("Below: sections match the live survey. Each row is one question, then its type label, then the answer.", { width: doc.page.width - 100 });
+            doc.moveDown(0.6);
             const answersByCat = new Map();
             for (const ans of response.answers || []) {
                 const code = ans.categoryCode || "_other";
@@ -432,43 +456,56 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
                 if (!orderedCategoryCodes.includes(code))
                     orderedCategoryCodes.push(code);
             });
+            const sectionCount = Math.max(1, orderedCategoryCodes.length);
+            let sectionPart = 0;
             for (const catCode of orderedCategoryCodes) {
                 const catAnswers = answersByCat.get(catCode);
                 if (!(catAnswers === null || catAnswers === void 0 ? void 0 : catAnswers.length))
                     continue;
-                catAnswers.sort((a, b) => compareQuestionCodes(a.code, b.code));
-                ensureRoom(doc, 120);
+                catAnswers.sort((a, b) => (0, exports.compareQuestionCodes)(a.code, b.code));
+                sectionPart += 1;
+                ensureRoom(doc, 130);
                 const catMeta = categoryByCode.get(catCode);
                 const sectionTitle = (catMeta === null || catMeta === void 0 ? void 0 : catMeta.title) || `Section ${catCode}`;
-                doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary);
-                doc.text(sectionTitle, { underline: true });
-                doc.moveDown(0.35);
+                doc.rect(50, doc.y, doc.page.width - 100, 22).fill(colors.light);
+                const secY = doc.y;
+                doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary).text(`Part ${sectionPart} of ${sectionCount}: ${sectionTitle}`, 56, secY + 5, { width: doc.page.width - 112 });
+                doc.y = secY + 28;
                 for (const ans of catAnswers) {
-                    ensureRoom(doc, 88);
+                    qIndex += 1;
+                    ensureRoom(doc, 100);
+                    const blockTop = doc.y;
+                    doc.rect(52, blockTop - 2, doc.page.width - 104, 1).fill(colors.muted);
                     const qText = String(ans.questionText || "Question")
                         .replace(/\r?\n/g, " ")
                         .trim();
-                    const line = answerToReadableString(ans);
+                    const line = (0, exports.answerToReadableString)(ans);
                     const typeLabel = ans.answerType === "Rating"
-                        ? "Rating (1–5)"
+                        ? "Rating (scale 1–5; shown as N/5)"
                         : ans.answerType === "YesNo"
                             ? "Yes / No"
-                            : String(ans.answerType || "Answer");
-                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(`Question ${ans.code}`);
-                    doc.font("Helvetica").fillColor("#000000").fontSize(10).text(qText, {
-                        width: doc.page.width - 100,
-                        align: "left",
+                            : ans.answerType === "MCQ"
+                                ? "Multiple choice (one or more options)"
+                                : String(ans.answerType || "Open answer");
+                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(`Question ${qIndex} of ${totalQ}  ·  Code ${ans.code}`);
+                    doc.font("Helvetica-Bold").fillColor("#000000").fontSize(10).text("Question wording: ", {
+                        continued: true,
                     });
-                    doc.moveDown(0.2);
-                    doc.fontSize(10).font("Helvetica-Bold").text("Type: ", { continued: true });
-                    doc.font("Helvetica").text(typeLabel);
-                    doc.fontSize(10).font("Helvetica-Bold").text("Answer: ", { continued: true });
-                    doc.font("Helvetica").text(line, { width: doc.page.width - 100 });
+                    doc.font("Helvetica").text(qText, {
+                        width: doc.page.width - 108,
+                    });
+                    doc.moveDown(0.15);
+                    doc.fontSize(9).font("Helvetica-Bold").fillColor(colors.muted).text("What kind of answer: ", {
+                        continued: true,
+                    });
+                    doc.font("Helvetica").fillColor("#000000").text(typeLabel);
+                    doc.fontSize(10).font("Helvetica-Bold").text("Their answer: ", { continued: true });
+                    doc.font("Helvetica").text(line, { width: doc.page.width - 108 });
                     if (Array.isArray(ans.keyPopulation) && ans.keyPopulation.length > 0) {
-                        doc.fontSize(9).fillColor(colors.muted).text(`Key population: ${ans.keyPopulation.join(", ")}`);
+                        doc.fontSize(9).fillColor(colors.muted).text(`Key population note: ${ans.keyPopulation.join(", ")}`);
                     }
                     doc.fillColor("#000000");
-                    doc.moveDown(0.65);
+                    doc.moveDown(0.75);
                 }
             }
         });
@@ -483,47 +520,69 @@ const csvQuote = (value) => {
 };
 const csvRow = (cells) => cells.map(csvQuote).join(",") + "\r\n";
 // CSV: one row per answer — every column quoted, UTF-8 BOM, CRLF (Excel-safe).
+// Structure: instruction rows, then for each submission a banner row and numbered answer rows (respondent repeated only on answer 1).
 const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+    var _a, _b, _c, _d;
     const categories = Array.isArray(data.survey.categories) ? data.survey.categories : [];
     const sectionTitleByCode = new Map(categories.map((c) => [String(c.code), String(c.title || c.code)]));
     const headerTitles = [
-        "Response #",
-        "Respondent name",
-        "Respondent email",
-        "Submitted at",
+        "Submission #",
+        "Answer # (this person)",
+        "Who submitted (only on row 1 per person; leave blank = same person as above)",
         "Survey section",
         "Question code",
-        "Question (full text)",
+        "Question text",
         "Answer type",
-        "Answer",
+        "Answer (readable)",
     ];
+    const nSub = (_c = (_a = data.totalResponses) !== null && _a !== void 0 ? _a : (_b = data.responses) === null || _b === void 0 ? void 0 : _b.length) !== null && _c !== void 0 ? _c : 0;
+    const titleOneLine = String(data.survey.title || "").replace(/\r?\n/g, " ").trim();
+    const isoNow = new Date().toISOString();
     const rows = [];
     rows.push(csvRow(headerTitles));
-    // One descriptive row (same 9 columns, all quoted) — no raw commas outside quotes
     rows.push(csvRow([
-        "INFO",
-        String(data.survey.title || "").replace(/\r?\n/g, " "),
-        String(((_a = data.survey.country) === null || _a === void 0 ? void 0 : _a.name) || "N/A"),
-        new Date().toISOString(),
-        `submissions=${data.totalResponses}`,
+        "HOW TO READ",
+        "Scroll to each ▼ START row to see the next person. Under that banner, Answer # is 1..N for that person only. Column Who is filled on answer 1 only.",
         "",
         "",
         "",
-        "One row per question answer; Answer is Yes/No or N/5 or Skipped",
+        "",
+        "",
+        "",
+    ]));
+    rows.push(csvRow([
+        "META",
+        `${titleOneLine} | country=${String(((_d = data.survey.country) === null || _d === void 0 ? void 0 : _d.name) || "N/A")} | exported_UTC=${isoNow} | submissions=${nSub}`,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Answer values: Yes/No, N/5, Skipped, or text.",
     ]));
     data.responses.forEach((response, respIndex) => {
         var _a, _b;
         const submittedIso = new Date(response.submittedAt).toISOString();
         const name = String((_a = response.userName) !== null && _a !== void 0 ? _a : "").trim() || "—";
         const email = String((_b = response.userEmail) !== null && _b !== void 0 ? _b : "").trim() || "—";
+        const whoLine = `${name} | ${email} | ${submittedIso}`;
+        rows.push(csvRow([
+            "▼ START",
+            `Submission ${respIndex + 1} of ${nSub} · ${whoLine}`,
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]));
         const sorted = [...(response.answers || [])].sort((a, b) => {
             const ac = String(a.categoryCode || "").localeCompare(String(b.categoryCode || ""));
             if (ac !== 0)
                 return ac;
-            return compareQuestionCodes(a.code, b.code);
+            return (0, exports.compareQuestionCodes)(a.code, b.code);
         });
-        sorted.forEach((ans) => {
+        sorted.forEach((ans, ansIndex) => {
             var _a, _b;
             const section = sectionTitleByCode.get(String(ans.categoryCode)) || ans.categoryTitle || ans.categoryCode || "";
             const qFull = String(ans.questionText || "")
@@ -531,14 +590,13 @@ const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, func
                 .trim();
             rows.push(csvRow([
                 String(respIndex + 1),
-                name,
-                email,
-                submittedIso,
+                String(ansIndex + 1),
+                ansIndex === 0 ? whoLine : "",
                 String(section),
                 String((_a = ans.code) !== null && _a !== void 0 ? _a : ""),
                 qFull,
                 String((_b = ans.answerType) !== null && _b !== void 0 ? _b : ""),
-                answerToReadableString(ans),
+                (0, exports.answerToReadableString)(ans),
             ]));
         });
     });

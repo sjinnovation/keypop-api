@@ -2,6 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.surveyCompletionTemplate = exports.accountDeletionTemplate = exports.passwordResetSuccessTemplate = exports.passwordResetOTPTemplate = exports.welcomeEmailTemplate = void 0;
 const env_1 = require("../config/env");
+/** Participant web origin for email links; falls back to admin FRONTEND_URL if unset. */
+function participantWebBase() {
+    const web = env_1.envConfig.FRONTEND_URL_WEB.trim();
+    if (web)
+        return web.replace(/\/+$/, "");
+    return String(env_1.envConfig.FRONTEND_URL || "").replace(/\/+$/, "");
+}
 // Base template wrapper
 const baseTemplate = (title, content) => `
     <!DOCTYPE html>
@@ -122,7 +129,7 @@ const baseTemplate = (title, content) => `
               <img src="${env_1.envConfig.FOOTER_LOGO_URL}" alt="APCOM" style="max-width: 80px; margin-bottom: 10px;" />
               <p>&copy; ${new Date().getFullYear()} APCOM. All rights reserved.</p>
             <p>
-              <a href="${env_1.envConfig.FRONTEND_URL}" style="color: #666;">Visit our website</a> | 
+              <a href="${participantWebBase()}" style="color: #666;">Visit our website</a> | 
               <a href="mailto:support@apcom.org" style="color: #666;">Contact Support</a>
             </p>
           </div>
@@ -147,7 +154,7 @@ const welcomeEmailTemplate = (name) => {
       </div>
       <p>Your participation helps us improve healthcare equity and access for key populations across the Asia-Pacific region.</p>
       <center>
-        <a href="${env_1.envConfig.FRONTEND_URL}" class="button">Login to APCOM</a>
+        <a href="${participantWebBase()}" class="button">Login to APCOM</a>
       </center>
       <p style="margin-top: 30px; color: #666;">
         If you have any questions, feel free to reach out to our support team.
@@ -211,7 +218,7 @@ const passwordResetOTPTemplate = (otp) => {
         </ul>
       </div>
       <center>
-        <a href="${env_1.envConfig.FRONTEND_URL}/reset-password" class="button">Reset Password</a>
+        <a href="${participantWebBase()}/reset-password" class="button">Reset Password</a>
       </center>
     `;
     return baseTemplate('Password Reset Request', content);
@@ -226,7 +233,7 @@ const passwordResetSuccessTemplate = (name) => {
         <p><strong>Your password has been successfully reset!</strong></p>
         <p>You can now log in to your account using your new password.</p>
         <center>
-          <a href="${env_1.envConfig.FRONTEND_URL}/login" class="button">Login to Your Account</a>
+          <a href="${participantWebBase()}/login" class="button">Login to Your Account</a>
         </center>
       </div>
       <div class="security-notice">
@@ -300,7 +307,7 @@ const surveyCompletionTemplate = (name, surveyTitle) => {
         <p>Your responses have been recorded and will help us improve healthcare access for key populations.</p>
       </div>
       <center>
-        <a href="${env_1.envConfig.FRONTEND_URL}/dashboard" class="button">View Dashboard</a>
+        <a href="${participantWebBase()}/dashboard" class="button">View Dashboard</a>
       </center>
       <p style="text-align: center; color: #666; margin-top: 30px;">
         Stay tuned for more surveys and updates from APCOM!

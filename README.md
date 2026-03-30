@@ -35,7 +35,8 @@ cp .env_example .env
 | `MONGO_URI` | **Yes** | MongoDB connection string. |
 | `JWT_SECRET` | **Yes** (prod) | Secret for signing JWTs (do not use defaults in production). |
 | `NODE_ENV` | No | `development` / `production`. |
-| `FRONTEND_URL` | No | Used for email assets / links (e.g. logo URLs). |
+| `FRONTEND_URL` | No | **Admin** portal origin (e.g. `https://admin.keypopapp.org`). Used for `LOGO_URL` / `FOOTER_LOGO_URL` (static images under `/static/...`). |
+| `FRONTEND_URL_WEB` | No | **Participant web** origin (e.g. `https://app.keypopapp.org`). Used for participant email links (login, reset password, dashboard). If unset, templates fall back to `FRONTEND_URL`. |
 | `EMAIL_USER` / `EMAIL_PASS` | No | Nodemailer (if used). |
 | `RESEND_API_KEY` | No | Resend API (if used for email). |
 | `EMAIL_FROM` | No | From address (has a code default). |

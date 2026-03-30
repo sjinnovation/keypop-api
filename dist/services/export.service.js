@@ -45,7 +45,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.exportSurveySummaryService = exports.exportAllSurveyResponsesService = exports.exportSurveyResponseService = exports.exportDataService = void 0;
+exports.formatSurveyAnswerValue = exports.exportSurveySummaryService = exports.exportAllSurveyResponsesService = exports.exportSurveyResponseService = exports.exportDataService = void 0;
 const exportServices_1 = require("../Utils/exportServices");
 const ApiError_1 = __importDefault(require("../global/errors/ApiError"));
 const http_status_1 = __importDefault(require("http-status"));
@@ -211,7 +211,7 @@ const exportAllSurveyResponsesService = (surveyId, format, scope) => __awaiter(v
                             skipped,
                             formattedValue: skipped
                                 ? 'Skipped'
-                                : formatAnswerValue(answer.value, answer.answerType),
+                                : (0, exports.formatSurveyAnswerValue)(answer.value, answer.answerType),
                             keyPopulation: answer.keyPopulation || [],
                         };
                     })
@@ -300,12 +300,12 @@ const prepareResponseData = (response) => {
         answers: response.answers.map((answer) => {
             const question = survey.questions.find((q) => q.code === answer.code);
             const category = survey.categories.find((c) => c.code === answer.categoryCode);
-            return Object.assign(Object.assign({}, answer.toObject()), { questionText: (question === null || question === void 0 ? void 0 : question.text) || 'Unknown Question', categoryTitle: (category === null || category === void 0 ? void 0 : category.title) || 'Unknown Category', formattedValue: formatAnswerValue(answer.value, answer.answerType) });
+            return Object.assign(Object.assign({}, answer.toObject()), { questionText: (question === null || question === void 0 ? void 0 : question.text) || 'Unknown Question', categoryTitle: (category === null || category === void 0 ? void 0 : category.title) || 'Unknown Category', formattedValue: (0, exports.formatSurveyAnswerValue)(answer.value, answer.answerType) });
         })
     };
 };
-// Helper function to format answer values based on type
-const formatAnswerValue = (value, answerType) => {
+/** Display string for a stored answer value (used by exports and admin view API). */
+const formatSurveyAnswerValue = (value, answerType) => {
     if (value === null || value === undefined || value === '') {
         return 'N/A';
     }
@@ -327,6 +327,7 @@ const formatAnswerValue = (value, answerType) => {
             return String(value);
     }
 };
+exports.formatSurveyAnswerValue = formatSurveyAnswerValue;
 // Helper function to format key population array for display
 const formatKeyPopulation = (keyPopulation) => {
     if (!keyPopulation || keyPopulation.length === 0) {
