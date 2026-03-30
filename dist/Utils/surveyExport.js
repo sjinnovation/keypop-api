@@ -337,9 +337,10 @@ const answerToReadableString = (ans) => {
     return String(v);
 };
 const ensureRoom = (doc, minBottom) => {
-    if (doc.y > doc.page.height - minBottom) {
+    const limit = doc.page.maxY() - minBottom;
+    if (doc.y > limit) {
         doc.addPage();
-        doc.y = 50;
+        doc.y = doc.page.margins.top;
     }
 };
 // PDF: cover + index, then each respondent on new pages — answers by survey section with full question text.
@@ -349,7 +350,8 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
         const doc = new pdfkit_1.default({
             margin: 50,
             size: "A4",
-            bufferPages: true,
+            // Flush pages as we go — avoids empty trailing pages from bufferPages + switchToPage footers
+            bufferPages: false,
             autoFirstPage: true,
             info: {
                 Title: `All Responses - ${data.survey.title}`,
@@ -404,7 +406,7 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
         doc.fontSize(10).font("Helvetica-Oblique").fillColor(colors.muted).text("Next pages: each person’s answers in order — section name, then each question (full wording) and the answer (Yes/No, rating 1–5, Skipped, etc.).", { width: doc.page.width - 100 });
         data.responses.forEach((response, respIdx) => {
             doc.addPage();
-            doc.y = 50;
+            doc.y = doc.page.margins.top;
             doc.fontSize(16).font("Helvetica-Bold").fillColor(colors.primary).text(`Respondent ${respIdx + 1} of ${data.totalResponses}`);
             doc.moveDown(0.4);
             doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.secondary).text("Respondent");
@@ -435,63 +437,56 @@ const generateAllResponsesPDF = (data) => __awaiter(void 0, void 0, void 0, func
                 if (!(catAnswers === null || catAnswers === void 0 ? void 0 : catAnswers.length))
                     continue;
                 catAnswers.sort((a, b) => compareQuestionCodes(a.code, b.code));
-                ensureRoom(doc, 100);
+                ensureRoom(doc, 120);
                 const catMeta = categoryByCode.get(catCode);
                 const sectionTitle = (catMeta === null || catMeta === void 0 ? void 0 : catMeta.title) || `Section ${catCode}`;
-                const bandY = doc.y;
-                doc.rect(50, bandY, doc.page.width - 100, 20).fill(colors.light);
                 doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary);
-                doc.text(sectionTitle, 58, bandY + 5, { width: doc.page.width - 116 });
-                doc.y = bandY + 26;
+                doc.text(sectionTitle, { underline: true });
+                doc.moveDown(0.35);
                 for (const ans of catAnswers) {
-                    ensureRoom(doc, 72);
-                    const qText = String(ans.questionText || "Question").replace(/\r?\n/g, " ");
-                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(`Question ${ans.code}`, {
-                        continued: true,
-                    });
-                    doc.font("Helvetica").fillColor("#000000").text(` — ${qText}`, { width: doc.page.width - 100 });
-                    doc.moveDown(0.12);
+                    ensureRoom(doc, 88);
+                    const qText = String(ans.questionText || "Question")
+                        .replace(/\r?\n/g, " ")
+                        .trim();
                     const line = answerToReadableString(ans);
-                    const typeNote = ans.answerType === "Rating"
-                        ? " (1–5 scale)"
+                    const typeLabel = ans.answerType === "Rating"
+                        ? "Rating (1–5)"
                         : ans.answerType === "YesNo"
-                            ? ""
-                            : ` (${ans.answerType || "answer"})`;
-                    doc.fontSize(10).font("Helvetica-Bold").text("Answer", { continued: true });
-                    doc.font("Helvetica").text(`${typeNote}: ${line}`);
+                            ? "Yes / No"
+                            : String(ans.answerType || "Answer");
+                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(`Question ${ans.code}`);
+                    doc.font("Helvetica").fillColor("#000000").fontSize(10).text(qText, {
+                        width: doc.page.width - 100,
+                        align: "left",
+                    });
+                    doc.moveDown(0.2);
+                    doc.fontSize(10).font("Helvetica-Bold").text("Type: ", { continued: true });
+                    doc.font("Helvetica").text(typeLabel);
+                    doc.fontSize(10).font("Helvetica-Bold").text("Answer: ", { continued: true });
+                    doc.font("Helvetica").text(line, { width: doc.page.width - 100 });
                     if (Array.isArray(ans.keyPopulation) && ans.keyPopulation.length > 0) {
                         doc.fontSize(9).fillColor(colors.muted).text(`Key population: ${ans.keyPopulation.join(", ")}`);
                     }
                     doc.fillColor("#000000");
-                    doc.moveDown(0.5);
+                    doc.moveDown(0.65);
                 }
             }
         });
-        const range = doc.bufferedPageRange();
-        for (let i = range.start; i < range.start + range.count; i++) {
-            doc.switchToPage(i);
-            doc.fontSize(8).font("Helvetica").fillColor(colors.muted).text(`Page ${i - range.start + 1} of ${range.count} · ${data.survey.title}`, 50, doc.page.height - 36, { align: "center", width: doc.page.width - 100 });
-        }
         doc.end();
     });
 });
 exports.generateAllResponsesPDF = generateAllResponsesPDF;
-// CSV: one row per question answer (long format) — readable in Excel, matches survey JSON shape.
+/** RFC 4180 field: always double-quoted so Excel never splits on commas inside questions/answers. */
+const csvQuote = (value) => {
+    const s = String(value !== null && value !== void 0 ? value : "");
+    return `"${s.replace(/"/g, '""')}"`;
+};
+const csvRow = (cells) => cells.map(csvQuote).join(",") + "\r\n";
+// CSV: one row per answer — every column quoted, UTF-8 BOM, CRLF (Excel-safe).
 const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const categories = Array.isArray(data.survey.categories) ? data.survey.categories : [];
     const sectionTitleByCode = new Map(categories.map((c) => [String(c.code), String(c.title || c.code)]));
-    const headerIds = [
-        "response_number",
-        "respondent_name",
-        "respondent_email",
-        "submitted_at",
-        "survey_section",
-        "question_code",
-        "question_text",
-        "answer_type",
-        "answer",
-    ];
     const headerTitles = [
         "Response #",
         "Respondent name",
@@ -501,11 +496,27 @@ const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, func
         "Question code",
         "Question (full text)",
         "Answer type",
-        "Answer (readable)",
+        "Answer",
     ];
-    const records = [];
+    const rows = [];
+    rows.push(csvRow(headerTitles));
+    // One descriptive row (same 9 columns, all quoted) — no raw commas outside quotes
+    rows.push(csvRow([
+        "INFO",
+        String(data.survey.title || "").replace(/\r?\n/g, " "),
+        String(((_a = data.survey.country) === null || _a === void 0 ? void 0 : _a.name) || "N/A"),
+        new Date().toISOString(),
+        `submissions=${data.totalResponses}`,
+        "",
+        "",
+        "",
+        "One row per question answer; Answer is Yes/No or N/5 or Skipped",
+    ]));
     data.responses.forEach((response, respIndex) => {
-        const baseSubmitted = new Date(response.submittedAt).toLocaleString();
+        var _a, _b;
+        const submittedIso = new Date(response.submittedAt).toISOString();
+        const name = String((_a = response.userName) !== null && _a !== void 0 ? _a : "").trim() || "—";
+        const email = String((_b = response.userEmail) !== null && _b !== void 0 ? _b : "").trim() || "—";
         const sorted = [...(response.answers || [])].sort((a, b) => {
             const ac = String(a.categoryCode || "").localeCompare(String(b.categoryCode || ""));
             if (ac !== 0)
@@ -513,38 +524,26 @@ const generateAllResponsesCSV = (data) => __awaiter(void 0, void 0, void 0, func
             return compareQuestionCodes(a.code, b.code);
         });
         sorted.forEach((ans) => {
-            var _a, _b, _c, _d;
+            var _a, _b;
             const section = sectionTitleByCode.get(String(ans.categoryCode)) || ans.categoryTitle || ans.categoryCode || "";
-            const qFull = String(ans.questionText || "").replace(/\r?\n/g, " ");
-            records.push({
-                response_number: respIndex + 1,
-                respondent_name: String((_a = response.userName) !== null && _a !== void 0 ? _a : ""),
-                respondent_email: String((_b = response.userEmail) !== null && _b !== void 0 ? _b : ""),
-                submitted_at: baseSubmitted,
-                survey_section: String(section),
-                question_code: String((_c = ans.code) !== null && _c !== void 0 ? _c : ""),
-                question_text: qFull,
-                answer_type: String((_d = ans.answerType) !== null && _d !== void 0 ? _d : ""),
-                answer: answerToReadableString(ans),
-            });
+            const qFull = String(ans.questionText || "")
+                .replace(/\r?\n/g, " ")
+                .trim();
+            rows.push(csvRow([
+                String(respIndex + 1),
+                name,
+                email,
+                submittedIso,
+                String(section),
+                String((_a = ans.code) !== null && _a !== void 0 ? _a : ""),
+                qFull,
+                String((_b = ans.answerType) !== null && _b !== void 0 ? _b : ""),
+                answerToReadableString(ans),
+            ]));
         });
     });
-    const csvStringifier = (0, csv_writer_1.createObjectCsvStringifier)({
-        header: headerIds.map((id, i) => ({ id, title: headerTitles[i] })),
-    });
-    const metadata = [
-        `# Survey responses (one row per answer)`,
-        `# Survey: ${data.survey.title}`,
-        `# Country: ${((_a = data.survey.country) === null || _a === void 0 ? void 0 : _a.name) || "N/A"}`,
-        `# Rows: ${records.length} (from ${data.totalResponses} submissions)`,
-        `# Export date: ${new Date().toLocaleString()}`,
-        `# Answer column: Yes/No, 1–5 ratings as "N/5", Skipped, etc.`,
-        ``,
-    ].join("\n");
-    const csvString = metadata +
-        csvStringifier.getHeaderString() +
-        (records.length ? csvStringifier.stringifyRecords(records) : "");
-    return Buffer.from(csvString, "utf-8");
+    const body = rows.join("");
+    return Buffer.from("\ufeff" + body, "utf8");
 });
 exports.generateAllResponsesCSV = generateAllResponsesCSV;
 // PDF generation for survey summary
