@@ -197,9 +197,10 @@ const exportAllSurveyResponsesService = (surveyId, format, scope) => __awaiter(v
                     userEmail,
                     submittedAt: response.submittedAt,
                     isComplete: response.isComplete,
-                    answers: response.answers.map(answer => {
+                    answers: response.answers.map((answer) => {
                         const question = questionMap.get(answer.code);
                         const category = categoryMap.get(answer.categoryCode);
+                        const skipped = !!answer.skipped;
                         return {
                             code: answer.code,
                             questionText: (question === null || question === void 0 ? void 0 : question.text) || 'Unknown Question',
@@ -207,7 +208,10 @@ const exportAllSurveyResponsesService = (surveyId, format, scope) => __awaiter(v
                             categoryTitle: (category === null || category === void 0 ? void 0 : category.title) || 'Unknown Category',
                             answerType: answer.answerType,
                             value: answer.value,
-                            formattedValue: formatAnswerValue(answer.value, answer.answerType),
+                            skipped,
+                            formattedValue: skipped
+                                ? 'Skipped'
+                                : formatAnswerValue(answer.value, answer.answerType),
                             keyPopulation: answer.keyPopulation || [],
                         };
                     })

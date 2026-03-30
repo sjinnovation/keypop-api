@@ -201,9 +201,10 @@ export const exportAllSurveyResponsesService = async (
           userEmail,
           submittedAt: response.submittedAt,
           isComplete: response.isComplete,
-          answers: response.answers.map(answer => {
+          answers: response.answers.map((answer: any) => {
             const question = questionMap.get(answer.code);
             const category = categoryMap.get(answer.categoryCode);
+            const skipped = !!answer.skipped;
 
             return {
               code: answer.code,
@@ -212,7 +213,10 @@ export const exportAllSurveyResponsesService = async (
               categoryTitle: category?.title || 'Unknown Category',
               answerType: answer.answerType,
               value: answer.value,
-              formattedValue: formatAnswerValue(answer.value, answer.answerType),
+              skipped,
+              formattedValue: skipped
+                ? 'Skipped'
+                : formatAnswerValue(answer.value, answer.answerType),
               keyPopulation: answer.keyPopulation || [],
             };
           })
