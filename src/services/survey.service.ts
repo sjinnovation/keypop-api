@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Survey from "../models/survey.model";
+import Survey, { AnswerType } from "../models/survey.model";
 import Country from "../models/country.model";
 import SurveyResponse from "../models/surveyResponse.model";
 import UserSurveyProgress from "../models/userSurveyProgress.model";
@@ -11,6 +11,23 @@ import { validateSurveyQuestions } from "../Utils/validateSurveyQuestion";
 import { isConditionMet, isValidAnswer } from "../Utils/submitSurveyValidation";
 import { IAnswer } from "../models/surveyTypes.model";
 import { calculateDetailedStatistics, getNextSection, getSectionsSummary, groupAnswersByCategory } from "../Utils/saveSurveyResponse";
+import { formatSurveyAnswerValue } from "./export.service";
+import { answerToReadableString, compareQuestionCodes } from "../Utils/surveyExport";
+
+const humanAnswerTypeLabel = (answerType: string | undefined): string => {
+  switch (answerType) {
+    case AnswerType.Rating:
+      return "Rating (scale 1–5)";
+    case AnswerType.YesNo:
+      return "Yes / No";
+    case AnswerType.MCQ:
+      return "Multiple choice";
+    case AnswerType.Text:
+      return "Text";
+    default:
+      return answerType ? String(answerType) : "Answer";
+  }
+};
 
 // Create survey
 export const addSurveyService = async (surveyData: any) => {
@@ -933,6 +950,195 @@ async function refreshSurveyHasResponsesFlag(surveyId: mongoose.Types.ObjectId |
   const count = await SurveyResponse.countDocuments({ surveyId });
   await Survey.findByIdAndUpdate(surveyId, { hasResponses: count > 0 });
 }
+
+type EnrichedAnswer = {
+  code: string;
+  categoryCode: string;
+  categoryTitle: string;
+  questionText: string;
+  answerType: string;
+  skipped: boolean;
+  formattedValue: string;
+  readableAnswer: string;
+  value: unknown;
+  keyPopulation?: unknown;
+};
+
+/** Superadmin & admin: one response with answers grouped by survey section for UI “View response”. Community admin: same country as respondent. */
+export const getAdminSurveyResponseByIdService = async (
+  responseId: string,
+  adminRole: UserRole,
+  adminCountry: string | undefined
+) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(responseId)) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid response ID");
+    }
+
+    const doc = await SurveyResponse.findById(responseId)
+      .populate({ path: "userId", select: "name email country" })
+      .populate({
+        path: "surveyId",
+        select: "title description country categories questions",
+        populate: { path: "country", select: "name code" },
+      });
+
+    if (!doc) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Survey response not found");
+    }
+
+    if (adminRole === UserRole.COMMUNITYADMIN) {
+      if (
+        adminCountry === undefined ||
+        adminCountry === null ||
+        String(adminCountry).trim() === ""
+      ) {
+        throw new ApiError(httpStatus.FORBIDDEN, ApiMessages.COMMUNITY_ADMIN_COUNTRY_REQUIRED);
+      }
+      const subject = doc.userId as { country?: string } | null;
+      const uCountry = subject?.country != null ? String(subject.country) : "";
+      if (uCountry !== String(adminCountry)) {
+        throw new ApiError(
+          httpStatus.FORBIDDEN,
+          "You can only view responses from users in your community"
+        );
+      }
+    }
+
+    const survey = doc.surveyId as any;
+    const user = doc.userId as any;
+    if (!survey || !survey._id) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Survey not found for this response");
+    }
+
+    const categories: any[] = Array.isArray(survey.categories) ? survey.categories : [];
+    const questions: any[] = Array.isArray(survey.questions) ? survey.questions : [];
+    const categoryByCode = new Map(categories.map((c: any) => [String(c.code), c]));
+
+    const rawAnswers = doc.answers || [];
+    const enriched: EnrichedAnswer[] = rawAnswers.map((a: any) => {
+      const plain = typeof a?.toObject === "function" ? a.toObject() : { ...a };
+      const question = questions.find((q: any) => q.code === plain.code);
+      const cat = categoryByCode.get(String(plain.categoryCode || ""));
+      const skipped = !!plain.skipped;
+      const formattedValue = skipped
+        ? "Skipped"
+        : formatSurveyAnswerValue(plain.value, plain.answerType as AnswerType);
+      const merged = {
+        ...plain,
+        formattedValue,
+        questionText: String(question?.text || plain.questionText || "—"),
+        categoryTitle: String(cat?.title || plain.categoryTitle || plain.categoryCode || "—"),
+      };
+      return {
+        code: String(plain.code ?? ""),
+        categoryCode: String(plain.categoryCode ?? ""),
+        categoryTitle: merged.categoryTitle,
+        questionText: merged.questionText,
+        answerType: String(plain.answerType ?? ""),
+        skipped,
+        formattedValue,
+        readableAnswer: answerToReadableString(merged),
+        value: plain.value,
+        keyPopulation: plain.keyPopulation,
+      };
+    });
+
+    const answersByCat = new Map<string, EnrichedAnswer[]>();
+    for (const ans of enriched) {
+      const code = ans.categoryCode || "_other";
+      if (!answersByCat.has(code)) answersByCat.set(code, []);
+      answersByCat.get(code)!.push(ans);
+    }
+
+    const orderedCategoryCodes: string[] = [];
+    categories.forEach((c: any) => {
+      if (answersByCat.has(String(c.code))) orderedCategoryCodes.push(String(c.code));
+    });
+    answersByCat.forEach((_v, code) => {
+      if (!orderedCategoryCodes.includes(code)) orderedCategoryCodes.push(code);
+    });
+
+    const sectionCount = Math.max(1, orderedCategoryCodes.length);
+    let indexInResponse = 0;
+    const totalQuestions = enriched.length;
+
+    const sections = orderedCategoryCodes.map((catCode, sectionIdx) => {
+      const list = answersByCat.get(catCode)!;
+      list.sort((x, y) => compareQuestionCodes(x.code, y.code));
+      const meta = categoryByCode.get(catCode);
+      return {
+        sectionCode: catCode,
+        sectionTitle: String(meta?.title || catCode),
+        partNumber: sectionIdx + 1,
+        partTotal: sectionCount,
+        items: list.map((row) => {
+          indexInResponse += 1;
+          return {
+            indexInResponse,
+            indexTotalForThisSubmission: totalQuestions,
+            code: row.code,
+            questionText: row.questionText,
+            answerType: row.answerType,
+            answerTypeLabel: humanAnswerTypeLabel(row.answerType),
+            skipped: row.skipped,
+            readableAnswer: row.readableAnswer,
+            keyPopulation: row.keyPopulation ?? [],
+          };
+        }),
+      };
+    });
+
+    const surveyCountry = survey.country;
+
+    return {
+      howToRead: {
+        summary:
+          "Answers are grouped under the same section titles as the live survey. Each item shows the full question, how the answer is stored (type), and a short readable answer.",
+        indexMeaning:
+          "indexInResponse counts this person only (1 = first question they answered in this export order).",
+      },
+      responseId: String(doc._id),
+      surveyId: String(survey._id),
+      submittedAt: doc.submittedAt,
+      isComplete: !!doc.isComplete,
+      isPartialSubmission: !!doc.isPartialSubmission,
+      completionPercentage: doc.completionPercentage ?? 0,
+      statistics: doc.statistics ?? {},
+      skippedQuestions: doc.skippedQuestions ?? [],
+      respondent: user
+        ? {
+            id: user._id != null ? String(user._id) : undefined,
+            name: user.name ?? "—",
+            email: user.email ?? "—",
+            country: user.country,
+          }
+        : null,
+      survey: {
+        id: String(survey._id),
+        title: survey.title,
+        description: survey.description,
+        country: surveyCountry
+          ? {
+              name: (surveyCountry as any).name,
+              code: (surveyCountry as any).code,
+            }
+          : null,
+      },
+      summary: {
+        totalAnswersInThisResponse: enriched.length,
+        totalSkippedTracked: Array.isArray(doc.skippedQuestions) ? doc.skippedQuestions.length : 0,
+      },
+      sections,
+    };
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      error.statusCode || httpStatus.INTERNAL_SERVER_ERROR,
+      error.message || "Error fetching survey response"
+    );
+  }
+};
 
 /** Admin: delete any response (community admin: only if respondent’s country matches). */
 export const deleteAdminSurveyResponseService = async (

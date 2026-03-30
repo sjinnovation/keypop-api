@@ -216,7 +216,7 @@ export const exportAllSurveyResponsesService = async (
               skipped,
               formattedValue: skipped
                 ? 'Skipped'
-                : formatAnswerValue(answer.value, answer.answerType),
+                : formatSurveyAnswerValue(answer.value, answer.answerType),
               keyPopulation: answer.keyPopulation || [],
             };
           })
@@ -333,15 +333,15 @@ const prepareResponseData = (response: any) => {
         ...answer.toObject(),
         questionText: question?.text || 'Unknown Question',
         categoryTitle: category?.title || 'Unknown Category',
-        formattedValue: formatAnswerValue(answer.value, answer.answerType)
+        formattedValue: formatSurveyAnswerValue(answer.value, answer.answerType)
       };
     })
   };
 };
 
 
-// Helper function to format answer values based on type
-const formatAnswerValue = (
+/** Display string for a stored answer value (used by exports and admin view API). */
+export const formatSurveyAnswerValue = (
   value: string | number | boolean | null | undefined,
   answerType: AnswerType
 ): string => {

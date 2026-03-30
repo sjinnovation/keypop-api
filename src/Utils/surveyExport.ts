@@ -342,7 +342,7 @@ const createChart = async (config: any): Promise<Buffer> => {
 };
 
 /** e.g. 1.1.2 before 1.1.10 */
-const compareQuestionCodes = (a: string, b: string): number => {
+export const compareQuestionCodes = (a: string, b: string): number => {
     const pa = String(a).split(".").map((x) => parseInt(x, 10) || 0);
     const pb = String(b).split(".").map((x) => parseInt(x, 10) || 0);
     const len = Math.max(pa.length, pb.length);
@@ -354,7 +354,7 @@ const compareQuestionCodes = (a: string, b: string): number => {
 };
 
 /** Human-readable answer: Skipped, Yes/No, 4/5, etc. */
-const answerToReadableString = (ans: any): string => {
+export const answerToReadableString = (ans: any): string => {
     if (ans?.skipped) return "Skipped";
     if (ans?.formattedValue != null && String(ans.formattedValue).trim() !== "") {
         return String(ans.formattedValue);
@@ -414,12 +414,37 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
         });
         doc.moveDown(0.5);
         doc.fontSize(16).font("Helvetica").fillColor(colors.secondary).text(data.survey.title, { align: "center" });
-        doc.moveDown(1.2);
+        doc.moveDown(1);
         doc.fontSize(11).font("Helvetica").fillColor(colors.secondary);
         doc.text(`Country / region: ${data.survey.country?.name || "N/A"}`);
         doc.text(`Submissions in this file: ${data.totalResponses}`);
         doc.text(`Exported: ${new Date().toLocaleString()}`);
-        doc.moveDown(1);
+        doc.moveDown(0.8);
+
+        doc.roundedRect(50, doc.y, doc.page.width - 100, 118, 4).fillAndStroke(colors.light, colors.muted);
+        const guideTop = doc.y + 8;
+        doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.primary).text("How to read this document", 60, guideTop);
+        doc.fontSize(9).font("Helvetica").fillColor("#000000");
+        doc.text(
+            "1. This PDF has two parts: (A) this summary and list of everyone who submitted, (B) one chapter per person with every question and answer in survey order.",
+            60,
+            guideTop + 16,
+            { width: doc.page.width - 120 }
+        );
+        doc.text(
+            "2. For each person you will see blocks by survey section (e.g. consent, access, quality). Each item shows the question wording, the type of answer (Yes/No, rating 1–5, text, etc.), and the answer they gave.",
+            60,
+            guideTop + 42,
+            { width: doc.page.width - 120 }
+        );
+        doc.text(
+            '3. "Question 3 of 24" counts only that person\'s questions so you can see progress through their form.',
+            60,
+            guideTop + 68,
+            { width: doc.page.width - 120 }
+        );
+        doc.y = guideTop + 108;
+        doc.moveDown(0.6);
 
         doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary).text("Submissions by date");
         doc.fontSize(10).font("Helvetica").fillColor(colors.secondary);
@@ -443,26 +468,44 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
                 ).toLocaleString()} — ~${pct}% of questions`
             );
         });
-        doc.moveDown(1);
-        doc.fontSize(10).font("Helvetica-Oblique").fillColor(colors.muted).text(
-            "Next pages: each person’s answers in order — section name, then each question (full wording) and the answer (Yes/No, rating 1–5, Skipped, etc.).",
+        doc.moveDown(0.8);
+        doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.primary).text("Next section of the PDF", {
+            underline: true,
+        });
+        doc.fontSize(9).font("Helvetica").fillColor(colors.muted).text(
+            "Starting on the following page: the same list as above, but with full question text and each answer, one person at a time.",
             { width: doc.page.width - 100 }
         );
 
         data.responses.forEach((response: any, respIdx: number) => {
             doc.addPage();
             doc.y = doc.page.margins.top;
-            doc.fontSize(16).font("Helvetica-Bold").fillColor(colors.primary).text(
-                `Respondent ${respIdx + 1} of ${data.totalResponses}`
+            const totalQ = (response.answers || []).length;
+            let qIndex = 0;
+
+            doc.fontSize(8).font("Helvetica").fillColor(colors.muted).text(`Survey export · ${data.survey.title}`, {
+                width: doc.page.width - 100,
+                align: "right",
+            });
+            doc.moveDown(0.2);
+
+            doc.fontSize(18).font("Helvetica-Bold").fillColor(colors.primary).text(
+                `Submission ${respIdx + 1} of ${data.totalResponses}`
             );
-            doc.moveDown(0.4);
-            doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.secondary).text("Respondent");
+            doc.moveTo(50, doc.y + 2).lineTo(doc.page.width - 50, doc.y + 2).strokeColor(colors.muted).lineWidth(1).stroke();
+            doc.moveDown(0.35);
+            doc.fontSize(11).font("Helvetica-Bold").fillColor(colors.secondary).text("Who submitted");
             doc.fontSize(10).font("Helvetica").fillColor("#000000");
             doc.text(`Name: ${response.userName || "—"}`);
             doc.text(`Email: ${response.userEmail || "—"}`);
             doc.text(`Submitted: ${new Date(response.submittedAt).toLocaleString()}`);
-            doc.text(`Completion: ${response.isComplete ? "Complete" : "Partial"}`);
-            doc.moveDown(0.7);
+            doc.text(`Form status: ${response.isComplete ? "Complete" : "Partial"} · ${totalQ} answers in this export`);
+            doc.moveDown(0.5);
+            doc.fontSize(9).font("Helvetica-Oblique").fillColor(colors.muted).text(
+                "Below: sections match the live survey. Each row is one question, then its type label, then the answer.",
+                { width: doc.page.width - 100 }
+            );
+            doc.moveDown(0.6);
 
             const answersByCat = new Map<string, any[]>();
             for (const ans of response.answers || []) {
@@ -479,46 +522,68 @@ export const generateAllResponsesPDF = async (data: any): Promise<Buffer> => {
                 if (!orderedCategoryCodes.includes(code)) orderedCategoryCodes.push(code);
             });
 
+            const sectionCount = Math.max(1, orderedCategoryCodes.length);
+            let sectionPart = 0;
+
             for (const catCode of orderedCategoryCodes) {
                 const catAnswers = answersByCat.get(catCode);
                 if (!catAnswers?.length) continue;
                 catAnswers.sort((a, b) => compareQuestionCodes(a.code, b.code));
+                sectionPart += 1;
 
-                ensureRoom(doc, 120);
+                ensureRoom(doc, 130);
                 const catMeta = categoryByCode.get(catCode);
                 const sectionTitle = catMeta?.title || `Section ${catCode}`;
-                doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary);
-                doc.text(sectionTitle, { underline: true });
-                doc.moveDown(0.35);
+                doc.rect(50, doc.y, doc.page.width - 100, 22).fill(colors.light);
+                const secY = doc.y;
+                doc.fontSize(12).font("Helvetica-Bold").fillColor(colors.primary).text(
+                    `Part ${sectionPart} of ${sectionCount}: ${sectionTitle}`,
+                    56,
+                    secY + 5,
+                    { width: doc.page.width - 112 }
+                );
+                doc.y = secY + 28;
 
                 for (const ans of catAnswers) {
-                    ensureRoom(doc, 88);
+                    qIndex += 1;
+                    ensureRoom(doc, 100);
+                    const blockTop = doc.y;
+                    doc.rect(52, blockTop - 2, doc.page.width - 104, 1).fill(colors.muted);
+
                     const qText = String(ans.questionText || "Question")
                         .replace(/\r?\n/g, " ")
                         .trim();
                     const line = answerToReadableString(ans);
                     const typeLabel =
                         ans.answerType === "Rating"
-                            ? "Rating (1–5)"
+                            ? "Rating (scale 1–5; shown as N/5)"
                             : ans.answerType === "YesNo"
                               ? "Yes / No"
-                              : String(ans.answerType || "Answer");
+                              : ans.answerType === "MCQ"
+                                ? "Multiple choice (one or more options)"
+                                : String(ans.answerType || "Open answer");
 
-                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(`Question ${ans.code}`);
-                    doc.font("Helvetica").fillColor("#000000").fontSize(10).text(qText, {
-                        width: doc.page.width - 100,
-                        align: "left",
+                    doc.fontSize(10).font("Helvetica-Bold").fillColor(colors.secondary).text(
+                        `Question ${qIndex} of ${totalQ}  ·  Code ${ans.code}`
+                    );
+                    doc.font("Helvetica-Bold").fillColor("#000000").fontSize(10).text("Question wording: ", {
+                        continued: true,
                     });
-                    doc.moveDown(0.2);
-                    doc.fontSize(10).font("Helvetica-Bold").text("Type: ", { continued: true });
-                    doc.font("Helvetica").text(typeLabel);
-                    doc.fontSize(10).font("Helvetica-Bold").text("Answer: ", { continued: true });
-                    doc.font("Helvetica").text(line, { width: doc.page.width - 100 });
+                    doc.font("Helvetica").text(qText, {
+                        width: doc.page.width - 108,
+                    });
+                    doc.moveDown(0.15);
+                    doc.fontSize(9).font("Helvetica-Bold").fillColor(colors.muted).text("What kind of answer: ", {
+                        continued: true,
+                    });
+                    doc.font("Helvetica").fillColor("#000000").text(typeLabel);
+                    doc.fontSize(10).font("Helvetica-Bold").text("Their answer: ", { continued: true });
+                    doc.font("Helvetica").text(line, { width: doc.page.width - 108 });
                     if (Array.isArray(ans.keyPopulation) && ans.keyPopulation.length > 0) {
-                        doc.fontSize(9).fillColor(colors.muted).text(`Key population: ${ans.keyPopulation.join(", ")}`);
+                        doc.fontSize(9).fillColor(colors.muted).text(`Key population note: ${ans.keyPopulation.join(", ")}`);
                     }
                     doc.fillColor("#000000");
-                    doc.moveDown(0.65);
+                    doc.moveDown(0.75);
                 }
             }
         });
@@ -536,6 +601,7 @@ const csvQuote = (value: unknown): string => {
 const csvRow = (cells: string[]): string => cells.map(csvQuote).join(",") + "\r\n";
 
 // CSV: one row per answer — every column quoted, UTF-8 BOM, CRLF (Excel-safe).
+// Structure: instruction rows, then for each submission a banner row and numbered answer rows (respondent repeated only on answer 1).
 export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
     const categories: any[] = Array.isArray(data.survey.categories) ? data.survey.categories : [];
     const sectionTitleByCode = new Map<string, string>(
@@ -543,32 +609,45 @@ export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
     );
 
     const headerTitles = [
-        "Response #",
-        "Respondent name",
-        "Respondent email",
-        "Submitted at",
+        "Submission #",
+        "Answer # (this person)",
+        "Who submitted (only on row 1 per person; leave blank = same person as above)",
         "Survey section",
         "Question code",
-        "Question (full text)",
+        "Question text",
         "Answer type",
-        "Answer",
+        "Answer (readable)",
     ];
+
+    const nSub = data.totalResponses ?? data.responses?.length ?? 0;
+    const titleOneLine = String(data.survey.title || "").replace(/\r?\n/g, " ").trim();
+    const isoNow = new Date().toISOString();
 
     const rows: string[] = [];
     rows.push(csvRow(headerTitles));
 
-    // One descriptive row (same 9 columns, all quoted) — no raw commas outside quotes
     rows.push(
         csvRow([
-            "INFO",
-            String(data.survey.title || "").replace(/\r?\n/g, " "),
-            String(data.survey.country?.name || "N/A"),
-            new Date().toISOString(),
-            `submissions=${data.totalResponses}`,
+            "HOW TO READ",
+            "Scroll to each ▼ START row to see the next person. Under that banner, Answer # is 1..N for that person only. Column Who is filled on answer 1 only.",
             "",
             "",
             "",
-            "One row per question answer; Answer is Yes/No or N/5 or Skipped",
+            "",
+            "",
+            "",
+        ])
+    );
+    rows.push(
+        csvRow([
+            "META",
+            `${titleOneLine} | country=${String(data.survey.country?.name || "N/A")} | exported_UTC=${isoNow} | submissions=${nSub}`,
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Answer values: Yes/No, N/5, Skipped, or text.",
         ])
     );
 
@@ -576,13 +655,28 @@ export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
         const submittedIso = new Date(response.submittedAt).toISOString();
         const name = String(response.userName ?? "").trim() || "—";
         const email = String(response.userEmail ?? "").trim() || "—";
+        const whoLine = `${name} | ${email} | ${submittedIso}`;
+
+        rows.push(
+            csvRow([
+                "▼ START",
+                `Submission ${respIndex + 1} of ${nSub} · ${whoLine}`,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ])
+        );
+
         const sorted = [...(response.answers || [])].sort((a: any, b: any) => {
             const ac = String(a.categoryCode || "").localeCompare(String(b.categoryCode || ""));
             if (ac !== 0) return ac;
             return compareQuestionCodes(a.code, b.code);
         });
 
-        sorted.forEach((ans: any) => {
+        sorted.forEach((ans: any, ansIndex: number) => {
             const section =
                 sectionTitleByCode.get(String(ans.categoryCode)) || ans.categoryTitle || ans.categoryCode || "";
             const qFull = String(ans.questionText || "")
@@ -591,9 +685,8 @@ export const generateAllResponsesCSV = async (data: any): Promise<Buffer> => {
             rows.push(
                 csvRow([
                     String(respIndex + 1),
-                    name,
-                    email,
-                    submittedIso,
+                    String(ansIndex + 1),
+                    ansIndex === 0 ? whoLine : "",
                     String(section),
                     String(ans.code ?? ""),
                     qFull,

@@ -140,6 +140,7 @@ Admin-only handlers use **`requireAdminRole`**: `admin`, `superadmin`, `communit
 | POST | `/` | Auth + admin. Create survey (body matches survey schema). |
 | GET | `/all` | Auth + admin. All surveys. |
 | GET | `/admin/responses` | Auth + admin. **Admin response list.** Query: `page`, `limit` (max 100), optional `surveyId`, `status` (`complete` \| `partial`). Superadmin/admin: all; communityadmin: filtered by respondent `User.country`. |
+| GET | `/admin/responses/:responseId` | Auth + admin. **Readable detail** for one submission: respondent, survey, `howToRead`, and `sections[]` with `items[]` (`questionText`, `answerTypeLabel`, `readableAnswer`, indices). Same community scope as delete. |
 | DELETE | `/admin/responses/:responseId` | Auth + admin. Deletes one `SurveyResponse` by Mongo id. Communityadmin: only if respondent’s `User.country` matches theirs. Updates survey `hasResponses` if none left. |
 | GET | `/user-country` | Auth. Survey for token user’s country. |
 | GET | `/country/:country` | Auth. |

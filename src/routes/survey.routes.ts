@@ -15,6 +15,7 @@ import {
     getAllUserSurveyResponses,
     getUserSurveyResponse,
     listAdminSurveyResponses,
+    getAdminSurveyResponseById,
     deleteAdminSurveyResponse,
     deleteOwnSurveyResponse,
 } from "../controllers/survey.controller";
@@ -25,6 +26,7 @@ const router = express.Router();
 router.post("/", authMiddleware, requireAdminRole, addSurvey);             // Create survey
 router.get("/all", authMiddleware, requireAdminRole, getAllSurveys);       // Get all surveys (including inactive)
 router.get("/admin/responses", authMiddleware, requireAdminRole, listAdminSurveyResponses);
+router.get("/admin/responses/:responseId", authMiddleware, requireAdminRole, getAdminSurveyResponseById);
 router.delete("/admin/responses/:responseId", authMiddleware, requireAdminRole, deleteAdminSurveyResponse);
 
 // Authenticated User Routes

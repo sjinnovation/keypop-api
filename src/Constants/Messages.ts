@@ -50,6 +50,7 @@ export enum ApiMessages {
   SURVEY_SUBMITTED = "Survey submitted successfully",
   SURVEY_SUBMISSION_FAILED = "Survey submission failed",
   SURVEY_RESPONSE_FETCHED = "Survey response fetched successfully",
+  ADMIN_SURVEY_RESPONSE_DETAIL = "Survey response loaded for review",
   SURVEY_RESPONSES_FETCHED = "Survey responses fetched successfully",
   COMMUNITY_ADMIN_COUNTRY_REQUIRED = "Community admin must have a country assigned",
   SURVEY_RESPONSE_DELETED = "Survey response deleted successfully",

@@ -18,6 +18,7 @@ import {
     getUserSurveyResponseService,
     getAllUserSurveyResponsesService,
     listAdminSurveyResponsesService,
+    getAdminSurveyResponseByIdService,
     deleteAdminSurveyResponseService,
     deleteOwnSurveyResponseService,
 } from "../services/survey.service";
@@ -270,6 +271,19 @@ export const listAdminSurveyResponses = catchAsync(async (req: Request, res: Res
     statusCode: httpStatus.OK,
     success: true,
     message: ApiMessages.SURVEY_RESPONSES_FETCHED,
+    data,
+  });
+});
+
+/** Superadmin & admin: full readable response by Mongo id (community admin: scoped). */
+export const getAdminSurveyResponseById = catchAsync(async (req: Request, res: Response) => {
+  const { responseId } = req.params;
+  const { user } = req;
+  const data = await getAdminSurveyResponseByIdService(responseId, user.role, user.country);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: ApiMessages.ADMIN_SURVEY_RESPONSE_DETAIL,
     data,
   });
 });
